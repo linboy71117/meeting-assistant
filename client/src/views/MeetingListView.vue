@@ -36,7 +36,7 @@
         class="meeting-card"
         v-for="m in meetings"
         :key="m.id"
-        @click="$router.push(`/meetings/${m.id}`)"
+        @click="router.push(`/meetings/${m.id}`)"
       >
         <div class="card-header">
           <span class="meeting-index">#{{ m.index }}</span>
@@ -53,26 +53,44 @@
 
 <script setup>
 import { ref } from "vue";
+import { useRouter } from "vue-router";
+
+const router = useRouter();
 
 const role = ref("host");
+
+// Load meetings
 const meetings = ref(
   JSON.parse(localStorage.getItem("aiMeetingAssistant.meetings") || "[]")
 );
 
+// Create new meeting
 function createMeeting() {
   const id = crypto.randomUUID();
-  $router.push(`/meetings/${id}?new=1`);
+
+  // Create meeting object
+  const newMeeting = {
+    id,
+    index: meetings.value.length + 1,
+    title: `新的會議 #${meetings.value.length + 1}`,
+    date: new Date().toLocaleDateString(),
+    inviteCode: Math.random().toString(36).substring(2, 8),
+  };
+
+  // Save into list
+  meetings.value.push(newMeeting);
+  localStorage.setItem("aiMeetingAssistant.meetings", JSON.stringify(meetings.value));
+
+  // Go to meeting page
+  router.push(`/meetings/${id}?new=1`);
 }
 </script>
 
 <style scoped>
-/* ----------------------------
-    For Popup Size Optimization
- -----------------------------*/
-
+/* Layout */
 .popup-container {
   width: 100%;
-  max-width: 100% !important;    /* 🌟 Popup 專屬寬度 */
+  max-width: 100% !important; 
   padding: 14px;
   margin: 0 auto;
   font-family: -apple-system, BlinkMacSystemFont, system-ui;
