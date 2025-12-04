@@ -1,0 +1,46 @@
+/* client/public/contentScript.css */
+
+#ai-brainstorm-panel {
+  position: fixed;
+  top: 64px;
+  right: 12px;
+  width: 360px;
+  height: 520px;
+  z-index: 999999; /* 比 Meet 介面還高 */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+#ai-brainstorm-panel .ai-bs-header {
+  height: 32px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #2b2f3a;
+  color: #fff;
+  font-size: 12px;
+  cursor: move; /* 提示可以拖拉 */
+}
+
+#ai-brainstorm-panel #ai-bs-close {
+  border: none;
+  background: transparent;
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#ai-brainstorm-panel #ai-bs-iframe {
+  border: none;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+}
