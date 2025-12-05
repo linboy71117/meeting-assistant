@@ -26,18 +26,31 @@ redis.on('error', (err) => {
   console.error('❌ Redis connection error:', err);
 });
 
-// CORS 配置
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
-  credentials: true
-}));
+// CORS 配置 - 允許 Chrome Extension 與所有來源
+const corsOptions = {
+  origin: true, // 允許所有來源，包括 Chrome Extension
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 200
+};
+
+// 最先應用 CORS（全局中間件）
+app.use(cors(corsOptions));
 
 app.use(express.json());
 
-// Socket.IO 配置
+// Socket.IO 配置 - 允許 Chrome Extension
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CORS_ORIGIN || '*',
+    origin: function (origin, callback) {
+      if (!origin || origin.startsWith('chrome-extension://')) {
+        callback(null, true);
+      } else {
+        callback(null, true);
+      }
+    },
+    credentials: true,
     methods: ['GET', 'POST']
   }
 });
@@ -94,6 +107,7 @@ io.on('connection', (socket) => {
 
 // REST API 端點
 app.get('/health', (req, res) => {
+  console.log('📋 /health request from:', req.headers.origin || 'no origin');
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 

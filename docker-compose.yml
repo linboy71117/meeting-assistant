@@ -83,6 +83,18 @@ services:
     depends_on:
       - backend
 
+  # Cloudflare Tunnel 服務
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: meeting-assistant-cloudflared
+    restart: unless-stopped
+    command: tunnel --config /etc/cloudflared/config.yml run
+    volumes:
+      - ./cloudflared/config.yml:/etc/cloudflared/config.yml:ro
+      - ./cloudflared/credentials.json:/etc/cloudflared/credentials.json:ro
+    depends_on:
+      - backend
+
 volumes:
   redis-data:
     driver: local
