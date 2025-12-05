@@ -9,6 +9,11 @@ meeting-assistant/
 ├── client/           # Chrome Extension (Vue 3 + Vite)
 └── docker-compose.yml
 ```
+### 事前準備
+```bash
+cd backend
+npm install pg
+```
 
 ### 使用 Docker Compose
 
