@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  # Redis 服務
+  redis:
+    image: redis:7-alpine
+    container_name: meeting-assistant-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # 後端服務
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: meeting-assistant-backend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - CORS_ORIGIN=*
+      - NODE_ENV=production
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 前端服務 (Chrome Extension 建置)
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      target: builder
+    container_name: meeting-assistant-client
+    volumes:
+      - ./client:/app
+      - /app/node_modules
+    command: sh -c "npm run build && tail -f /dev/null"
+    depends_on:
+      - backend
+
+volumes:
+  redis-data:
+    driver: local
+
+networks:
+  default:
+    name: meeting-assistant-network
