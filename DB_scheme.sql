@@ -1,19 +1,44 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- 用戶表
+CREATE TABLE users (
+  id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name         TEXT NOT NULL,
+  email        TEXT UNIQUE,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_users_email ON users(email);
+
+-- 會議表（invite_code 即為 Google Meet 代碼）
 CREATE TABLE meetings (
-  id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),  -- 內部用
-  invite_code  VARCHAR(32) NOT NULL UNIQUE,                  -- 對外會議代碼：abc-defg-hij
+  id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  invite_code  VARCHAR(50) NOT NULL UNIQUE,  -- Google Meet 會議代碼（如 abc-defg-hij）
   title        TEXT NOT NULL,
-  date         DATE,                                         -- 你目前是字串，也可以先用 DATE
-  description  TEXT,                                         -- 想想要不要留.
-  meet_url     TEXT,
-  summary      TEXT,                                         -- 想想要不要留        
+  date         DATE,
+  description  TEXT,
+  summary      TEXT,
+  expires_at   TIMESTAMPTZ,
+  status       TEXT NOT NULL DEFAULT 'active',
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  version      INT NOT NULL DEFAULT 1                        -- 鎖用（防止覆蓋別人的修改）
+  version      INT NOT NULL DEFAULT 1
 );
 
 CREATE INDEX idx_meetings_invite_code ON meetings(invite_code);
+
+-- 會議參與者表
+CREATE TABLE meeting_participants (
+  id           BIGSERIAL PRIMARY KEY,
+  meeting_id   UUID NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+  user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role         VARCHAR(20) NOT NULL DEFAULT 'participant',  -- 'host' 或 'participant'
+  joined_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(meeting_id, user_id)
+);
+
+CREATE INDEX idx_participants_meeting ON meeting_participants(meeting_id);
+CREATE INDEX idx_participants_user ON meeting_participants(user_id);
 
 
 CREATE TABLE agenda_items (
