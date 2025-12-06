@@ -86,8 +86,17 @@ function generateInviteCodeFromId(id: string): string {
 async function loadMeetings() {
   loading.value = true;
   error.value = "";
+
+  const userId = localStorage.getItem("meeting_user_id");
+
+  if (!userId) {
+    error.value = "尚未登入，請先登入系統。";
+    loading.value = false;
+    return;
+  }
+
   try {
-    const res = await fetch(`${API_BASE}/api/meetings`);
+    const res = await fetch(`${API_BASE}/api/users/${userId}/meetings`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     meetings.value = (data as any[]).map((m, idx) => ({
@@ -105,31 +114,36 @@ async function loadMeetings() {
 async function createMeeting() {
   creating.value = true;
   try {
+    const userId = localStorage.getItem("meeting_user_id");
+    
+    if (!userId) {
+      alert("無法識別使用者身分，請重新登入");
+      router.push("/login");
+      return;
+    }
+
     const id = crypto.randomUUID();
     const inviteCode = generateInviteCodeFromId(id);
     const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
     const payload = {
-      id,
-      inviteCode,
+      // 後端 POST /api/meetings 需要的欄位
       title: "新的會議",
+      inviteCode: inviteCode, // 必須是 CamelCase (inviteCode)
+      userId: userId,         // 傳送 userId，讓後端把你加入為 host
       date: today,
       description: "",
-      meetUrl: "",
       summary: "",
       agenda: [],
+
     };
 
-    const res = await fetch(`${API_BASE}/api/meetings/${id}`, {
+    const res = await fetch(`${API_BASE}/api/meetings`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
 
-    if (!res.ok) {
-      alert("建立會議失敗");
-      return;
-    }
 
     const saved = await res.json();
     meetings.value.unshift({
@@ -137,8 +151,13 @@ async function createMeeting() {
       index: meetings.value.length + 1,
     });
 
+    if (!res.ok) {
+      alert("建立會議失敗");
+      return;
+    }
+
     // 帶 new=1 進去，Detail 可以自動進「編輯模式」
-    router.push(`/meetings/${id}?new=1`);
+    router.push(`/meetings/${saved.id}?new=1`);
   } catch (e) {
     console.error("Create meeting failed", e);
     alert("建立會議失敗（連線錯誤）");
