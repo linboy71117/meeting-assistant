@@ -13,11 +13,11 @@ const pool = new Pool({
 });
 
 pool.on("connect", () => {
-  console.log("✅ Connected to PostgreSQL");
+  console.log("Connected to PostgreSQL");
 });
 
 pool.on("error", (err) => {
-  console.error("❌ PostgreSQL pool error:", err);
+  console.error("PostgreSQL pool error:", err);
 });
 
 // Redis 連線
@@ -31,11 +31,11 @@ const redis = new Redis({
 });
 
 redis.on("connect", () => {
-  console.log("✅ Connected to Redis");
+  console.log("Connected to Redis");
 });
 
 redis.on("error", (err) => {
-  console.error("❌ Redis connection error:", err);
+  console.error("Redis connection error:", err);
 });
 
 module.exports = { pool, redis };

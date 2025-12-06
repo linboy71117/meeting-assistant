@@ -8,6 +8,9 @@ const { createServer } = require("http");
 // 引入資料庫連線
 const { pool, redis } = require("./config/database");
 
+// 引入資料庫初始化
+const initDatabase = require("./scripts/init-db");
+
 // 引入 Socket.IO 設定
 const setupSocketIO = require("./config/socket");
 
@@ -38,7 +41,7 @@ app.use(express.json());
 
 // 健康檢查
 app.get("/health", (req, res) => {
-  console.log("📋 /health request from:", req.headers.origin || "no origin");
+  console.log("/health request from:", req.headers.origin || "no origin");
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
@@ -50,7 +53,20 @@ app.use("/api/meetings", meetingsRouter(pool, redis, io));
 
 const PORT = process.env.PORT || 3000;
 
-httpServer.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Socket.IO server ready`);
-});
+async function startServer() {
+  try {
+    // 初始化資料庫
+    await initDatabase(pool);
+
+    // 啟動 HTTP server
+    httpServer.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on port ${PORT}`);
+      console.log(`Socket.IO server ready`);
+    });
+  } catch (error) {
+    console.error("啟動失敗:", error);
+    process.exit(1);
+  }
+}
+
+startServer();
