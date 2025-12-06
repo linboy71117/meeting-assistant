@@ -32,7 +32,7 @@ const io = setupSocketIO(httpServer, redis);
 const corsOptions = {
   origin: true, // 允許所有來源（含 chrome-extension://）
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
   allowedHeaders: ["Content-Type", "Authorization"],
   optionsSuccessStatus: 200,
 };

@@ -286,7 +286,6 @@ async function saveMeeting() {
     title: editable.value.title || "未命名會議",
     date: editable.value.date || null,
     description: editable.value.description || "",
-    meetUrl: editable.value.meetUrl || "",
     summary: summary.value || "",
     agenda: editableAgenda.value.map((item, index) => ({
       orderIndex: index,
@@ -299,7 +298,7 @@ async function saveMeeting() {
 
   try {
     const res = await fetch(`${API_BASE}/api/meetings/${meetingId}`, {
-      method: "POST",
+      method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
