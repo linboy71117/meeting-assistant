@@ -2,8 +2,9 @@
 
 const express = require("express");
 const router = express.Router();
+const { getMeetingFromCache, setMeetingCache } = require("../utils/cacheManager");
 
-module.exports = (pool) => {
+module.exports = (pool, redis) => {
   // 註冊新用戶
   router.post("/register", async (req, res) => {
     const { name, email } = req.body;
@@ -152,7 +153,7 @@ module.exports = (pool) => {
     }
   });
 
-  // 取得用戶的會議列表
+  // 取得用戶的會議列表 - 使用 Redis 快取單個會議
   router.get("/:userId/meetings", async (req, res) => {
     const { userId } = req.params;
 
@@ -192,6 +193,12 @@ module.exports = (pool) => {
 
         // 使用 groupMeetings 函數（需要從外部傳入或重新定義）
         const meetings = groupMeetings(result.rows);
+        
+        // 批量快取每個會議
+        for (const meeting of meetings) {
+          await setMeetingCache(redis, meeting.id, meeting);
+        }
+        
         res.json(meetings);
       } finally {
         client.release();

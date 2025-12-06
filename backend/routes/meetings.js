@@ -2,6 +2,7 @@
 
 const express = require("express");
 const router = express.Router();
+const { getMeetingFromCache, setMeetingCache, invalidateMeetingCache, queueSync } = require("../utils/cacheManager");
 
 module.exports = (pool, redis, io) => {
   // 取得所有會議列表（含 agenda）
@@ -47,11 +48,20 @@ module.exports = (pool, redis, io) => {
     }
   });
 
-  // 取得單一會議（含 agenda）
+  // 取得單一會議（含 agenda）- Redis 優先
   router.get("/:id", async (req, res) => {
     const { id } = req.params;
 
+    console.log(`\n[REQUEST] GET /api/meetings/${id}`);
     try {
+      // 先檢查 Redis 快取
+      const cachedMeeting = await getMeetingFromCache(redis, id);
+      if (cachedMeeting) {
+        console.log(`[RESPONSE] Returning cached meeting ${id}`);
+        return res.json(cachedMeeting);
+      }
+
+      console.log(`[DATABASE] Querying meeting ${id} from PostgreSQL`);
       const client = await pool.connect();
       try {
         const result = await client.query(
@@ -83,22 +93,32 @@ module.exports = (pool, redis, io) => {
           [id]
         );
 
+        
         if (result.rowCount === 0) {
-          return res.status(404).json({ error: "Meeting not found" });
+            console.log(`[ERROR] Meeting ${id} not found`);
+            return res.status(404).json({ error: "Meeting not found" });
+        }
+        else{
+            console.log(`[DATABASE] Query completed, rows: ${result.rowCount}`);
         }
 
         const [meeting] = groupMeetings(result.rows);
+        
+        // 寫入 Redis 快取
+        await setMeetingCache(redis, id, meeting);
+        
+        console.log(`[RESPONSE] Returning meeting ${id} from database`);
         res.json(meeting);
       } finally {
         client.release();
       }
     } catch (err) {
-      console.error("Error fetching meeting:", err);
+      console.error("[ERROR] Error fetching meeting:", err);
       res.status(500).json({ error: "Internal server error" });
     }
   });
 
-  // 建立新會議（ID 由資料庫自動產生）
+  // 建立新會議（ID 由資料庫自動產生）- 批量議程插入
   router.post("/", async (req, res) => {
     const body = req.body || {};
 
@@ -111,7 +131,11 @@ module.exports = (pool, redis, io) => {
     const agenda = Array.isArray(body.agenda) ? body.agenda : [];
     const userId = body.userId; // 建立者的 user ID
 
+    console.log(`\n[REQUEST] POST /api/meetings - Creating: ${inviteCode} / ${title}`);
+    console.log(`[REQUEST] Agenda items: ${agenda.length}, userId: ${userId}`);
+
     if (!inviteCode || !title) {
+      console.log(`[ERROR] Missing required fields`);
       return res
         .status(400)
         .json({ error: "inviteCode 與 title 為必填欄位" });
@@ -120,6 +144,7 @@ module.exports = (pool, redis, io) => {
     try {
       const client = await pool.connect();
       try {
+        console.log(`[DATABASE] Starting transaction for new meeting`);
         await client.query("BEGIN");
 
         // 將已過期但狀態仍為 active 的會議標記為 expired
@@ -132,6 +157,7 @@ module.exports = (pool, redis, io) => {
              AND expires_at <= NOW();`,
           [inviteCode]
         );
+        console.log(`[DATABASE] Marked expired meetings`);
 
         // 檢查是否有未過期且 active 的同代碼會議
         const existing = await client.query(
@@ -146,6 +172,7 @@ module.exports = (pool, redis, io) => {
 
         if (existing.rowCount > 0) {
           await client.query("ROLLBACK");
+          console.log(`[ERROR] Invite code already exists: ${inviteCode}`);
           return res.status(409).json({
             error: "此會議代碼已存在 (尚未過期)",
             meetingId: existing.rows[0].id,
@@ -153,6 +180,7 @@ module.exports = (pool, redis, io) => {
         }
 
         // 新增會議
+        console.log(`[DATABASE] Inserting new meeting`);
         const insertResult = await client.query(
           `
         INSERT INTO meetings (
@@ -165,6 +193,7 @@ module.exports = (pool, redis, io) => {
         );
 
         const meetingId = insertResult.rows[0].id;
+        console.log(`[DATABASE] Meeting created with ID: ${meetingId}`);
 
         // 如果有提供 userId，將建立者加入為 host
         if (userId) {
@@ -172,30 +201,42 @@ module.exports = (pool, redis, io) => {
             "INSERT INTO meeting_participants (meeting_id, user_id, role) VALUES ($1, $2, $3)",
             [meetingId, userId, "host"]
           );
+          console.log(`[DATABASE] Added host: ${userId}`);
         }
 
-        // 新增議程
-        for (let i = 0; i < agenda.length; i++) {
-          const item = agenda[i] || {};
-          await client.query(
-            `
-          INSERT INTO agenda_items (
-            meeting_id, order_index, time, title, owner, note
-          )
-          VALUES ($1, $2, $3, $4, $5, $6)
-        `,
-            [
+        // 批量新增議程 - 單一 SQL 語句插入所有議程
+        if (agenda.length > 0) {
+          const agendaValues = agenda
+            .map((item, i) => [
               meetingId,
               i,
               item.time || null,
               item.title || "",
               item.owner || null,
               item.note || null,
-            ]
-          );
+            ]);
+
+          // 構建批量插入語句
+          let query = `INSERT INTO agenda_items (meeting_id, order_index, time, title, owner, note) VALUES `;
+          const values = [];
+          let paramIndex = 1;
+
+          agendaValues.forEach((row, idx) => {
+            const placeholders = [];
+            for (let i = 0; i < 6; i++) {
+              placeholders.push(`$${paramIndex++}`);
+              values.push(row[i]);
+            }
+            query += `(${placeholders.join(",")})`;
+            if (idx < agendaValues.length - 1) query += ",";
+          });
+
+          await client.query(query, values);
+          console.log(`[DATABASE] Inserted ${agenda.length} agenda items (single batch query)`);
         }
 
         // 取出完整會議資料回傳
+        console.log(`[DATABASE] Fetching complete meeting data`);
         const result = await client.query(
           `
         SELECT
@@ -226,13 +267,19 @@ module.exports = (pool, redis, io) => {
         );
 
         await client.query("COMMIT");
+        console.log(`[DATABASE] Transaction committed`);
 
         const [savedMeeting] = groupMeetings(result.rows);
 
-        // 更新 Redis 暫存 & 廣播
-        await redis.set(`meeting:${meetingId}`, JSON.stringify(savedMeeting));
+        // 更新 Redis 快取 & 廣播
+        console.log(`[REDIS] Setting cache for meeting ${meetingId}`);
+        await setMeetingCache(redis, meetingId, savedMeeting);
         io.to(`meeting-${meetingId}`).emit("meeting-updated", savedMeeting);
 
+        // 異步入隊同步（可選）
+        await queueSync(redis, meetingId, "create", { title, inviteCode });
+
+        console.log(`[RESPONSE] Meeting created successfully: ${meetingId}`);
         res.status(201).json(savedMeeting);
       } catch (err) {
         await client.query("ROLLBACK");
@@ -241,30 +288,17 @@ module.exports = (pool, redis, io) => {
         client.release();
       }
     } catch (err) {
-      console.error("Error creating meeting:", err);
+      console.error("[ERROR] Error creating meeting:", err);
       res.status(500).json({ error: "Internal server error" });
     }
   });
 
-  // 更新會議（含 agenda）
+  // 更新會議（含 agenda）- 批量議程操作 + 快取更新
   router.patch("/:id", async (req, res) => {
     const { id } = req.params;
     const body = req.body || {};
 
-    const inviteCode = body.inviteCode;
-    const title = body.title;
-    const date = body.date || null;
-    const description = body.description || null;
-    const summary = body.summary || null;
-    const expiresAt = body.expiresAt || null;
-    const status = body.status || null; // 選填：active/expired
     const agenda = Array.isArray(body.agenda) ? body.agenda : [];
-
-    if (!inviteCode || !title) {
-      return res
-        .status(400)
-        .json({ error: "inviteCode 與 title 為必填欄位" });
-    }
 
     try {
       const client = await pool.connect();
@@ -273,7 +307,7 @@ module.exports = (pool, redis, io) => {
 
         // 檢查會議是否存在
         const existing = await client.query(
-          "SELECT id, status, expires_at FROM meetings WHERE id = $1",
+          "SELECT id, status, expires_at, invite_code, title FROM meetings WHERE id = $1",
           [id]
         );
 
@@ -282,72 +316,129 @@ module.exports = (pool, redis, io) => {
           return res.status(404).json({ error: "Meeting not found" });
         }
 
-        // 若更換 inviteCode，檢查其他 active 未過期的衝突
-        const conflict = await client.query(
-          `SELECT id FROM meetings
-            WHERE invite_code = $1
-              AND id <> $2
-              AND status = 'active'
-              AND (expires_at IS NULL OR expires_at > NOW())
-            LIMIT 1;`,
-          [inviteCode, id]
-        );
+        // 動態建構 UPDATE 語句，只更新有提供的欄位
+        const updates = [];
+        const values = [id];
+        let paramIndex = 2;
 
-        if (conflict.rowCount > 0) {
-          await client.query("ROLLBACK");
-          return res.status(409).json({ error: "此會議代碼已存在 (尚未過期)" });
+        if (body.hasOwnProperty('inviteCode')) {
+          // 檢查新的 inviteCode 是否衝突
+          if (body.inviteCode !== existing.rows[0].invite_code) {
+            const conflict = await client.query(
+              `SELECT id FROM meetings
+                WHERE invite_code = $1
+                  AND id <> $2
+                  AND status = 'active'
+                  AND (expires_at IS NULL OR expires_at > NOW())
+                LIMIT 1;`,
+              [body.inviteCode, id]
+            );
+
+            if (conflict.rowCount > 0) {
+              await client.query("ROLLBACK");
+              return res.status(409).json({ error: "此會議代碼已存在 (尚未過期)" });
+            }
+          }
+          updates.push(`invite_code = $${paramIndex}`);
+          values.push(body.inviteCode);
+          paramIndex++;
         }
 
-        // 決定新狀態與過期時間（若未提供則沿用舊值）
-        const newExpiresAt = expiresAt !== null ? expiresAt : existing.rows[0].expires_at;
-        const newStatus = status || existing.rows[0].status || "active";
+        if (body.hasOwnProperty('title')) {
+          updates.push(`title = $${paramIndex}`);
+          values.push(body.title);
+          paramIndex++;
+        }
 
-        // 若過期時間已到，強制標記 expired
-        const finalStatus = newExpiresAt && new Date(newExpiresAt) <= new Date() ? "expired" : newStatus;
+        if (body.hasOwnProperty('date')) {
+          updates.push(`date = $${paramIndex}`);
+          values.push(body.date || null);
+          paramIndex++;
+        }
 
-        // 更新會議
-        await client.query(
-          `
-        UPDATE meetings
-        SET
-          invite_code = $2,
-          title       = $3,
-          date        = $4,
-          description = $5,
-          summary     = $6,
-          expires_at  = $7,
-          status      = $8,
-          updated_at  = NOW(),
-          version     = version + 1
-        WHERE id = $1
-      `,
-          [id, inviteCode, title, date, description, summary, newExpiresAt, finalStatus]
-        );
+        if (body.hasOwnProperty('description')) {
+          updates.push(`description = $${paramIndex}`);
+          values.push(body.description || null);
+          paramIndex++;
+        }
+
+        if (body.hasOwnProperty('summary')) {
+          updates.push(`summary = $${paramIndex}`);
+          values.push(body.summary || null);
+          paramIndex++;
+        }
+
+        if (body.hasOwnProperty('expiresAt')) {
+          updates.push(`expires_at = $${paramIndex}`);
+          values.push(body.expiresAt || null);
+          paramIndex++;
+        }
+
+        if (body.hasOwnProperty('status')) {
+          updates.push(`status = $${paramIndex}`);
+          values.push(body.status);
+          paramIndex++;
+        }
+
+        // 檢查過期時間是否已到，若已到則強制標記 expired
+        const expiresAtValue = body.hasOwnProperty('expiresAt') ? body.expiresAt : existing.rows[0].expires_at;
+        if (expiresAtValue && new Date(expiresAtValue) <= new Date()) {
+          const statusUpdateIndex = updates.findIndex(u => u.startsWith('status'));
+          if (statusUpdateIndex !== -1) {
+            updates[statusUpdateIndex] = `status = $${paramIndex - (updates.length - statusUpdateIndex)}`;
+            values[values.length - (updates.length - statusUpdateIndex)] = 'expired';
+          } else {
+            updates.push(`status = $${paramIndex}`);
+            values.push('expired');
+            paramIndex++;
+          }
+        }
+
+        // 如果有欄位需要更新
+        if (updates.length > 0) {
+          updates.push(`updated_at = NOW()`);
+          updates.push(`version = version + 1`);
+
+          const updateQuery = `
+            UPDATE meetings
+            SET ${updates.join(', ')}
+            WHERE id = $1
+          `;
+
+          await client.query(updateQuery, values);
+        }
 
         // 先清掉舊的 agenda
-        await client.query("DELETE FROM agenda_items WHERE meeting_id = $1", [
-          id,
-        ]);
+        await client.query("DELETE FROM agenda_items WHERE meeting_id = $1", [id]);
 
-        // 再把新的 agenda 插回去
-        for (let i = 0; i < agenda.length; i++) {
-          const item = agenda[i] || {};
-          await client.query(
-            `
-          INSERT INTO agenda_items (
-            meeting_id, order_index, time, title, owner, note
-          )
-          VALUES ($1, $2, $3, $4, $5, $6)
-        `,
-            [
+        // 批量新增議程 - 單一 SQL 語句插入所有議程
+        if (agenda.length > 0) {
+          const agendaValues = agenda
+            .map((item, i) => [
               id,
               i,
               item.time || null,
               item.title || "",
               item.owner || null,
               item.note || null,
-            ]
-          );
+            ]);
+
+          // 構建批量插入語句
+          let query = `INSERT INTO agenda_items (meeting_id, order_index, time, title, owner, note) VALUES `;
+          const values = [];
+          let paramIndex = 1;
+
+          agendaValues.forEach((row, idx) => {
+            const placeholders = [];
+            for (let i = 0; i < 6; i++) {
+              placeholders.push(`$${paramIndex++}`);
+              values.push(row[i]);
+            }
+            query += `(${placeholders.join(",")})`;
+            if (idx < agendaValues.length - 1) query += ",";
+          });
+
+          await client.query(query, values);
         }
 
         // 取出最新版本回傳
@@ -360,6 +451,8 @@ module.exports = (pool, redis, io) => {
           m.date,
           m.description,
           m.summary,
+          m.status,
+          m.expires_at,
           m.created_at,
           m.updated_at,
           m.version,
@@ -382,9 +475,15 @@ module.exports = (pool, redis, io) => {
 
         const [savedMeeting] = groupMeetings(result.rows);
 
-        // 更新 Redis 暫存 & 廣播
-        await redis.set(`meeting:${id}`, JSON.stringify(savedMeeting));
+        // 更新 Redis 快取 & 廣播
+        await setMeetingCache(redis, id, savedMeeting);
         io.to(`meeting-${id}`).emit("meeting-updated", savedMeeting);
+
+        // 異步入隊同步（可選）
+        await queueSync(redis, id, "update", { 
+          title: savedMeeting.title, 
+          inviteCode: savedMeeting.inviteCode 
+        });
 
         res.json(savedMeeting);
       } catch (err) {

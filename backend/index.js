@@ -14,6 +14,9 @@ const initDatabase = require("./scripts/init-db");
 // 引入 Socket.IO 設定
 const setupSocketIO = require("./config/socket");
 
+// 引入同步工作者
+const { startSyncWorker } = require("./services/syncWorker");
+
 // 引入路由
 const usersRouter = require("./routes/users");
 const meetingsRouter = require("./routes/meetings");
@@ -46,7 +49,7 @@ app.get("/health", (req, res) => {
 });
 
 // 掛載路由
-app.use("/api/users", usersRouter(pool));
+app.use("/api/users", usersRouter(pool, redis));
 app.use("/api/meetings", meetingsRouter(pool, redis, io));
 
 /* ---------------- 啟動伺服器 ---------------- */
@@ -56,15 +59,23 @@ const PORT = process.env.PORT || 3000;
 async function startServer() {
   try {
     // 初始化資料庫
+    console.log("[SERVER] Initializing database...");
     await initDatabase(pool);
+    console.log("[SERVER] Database initialized");
+
+    // 啟動異步同步工作者
+    console.log("[SERVER] Starting sync worker...");
+    startSyncWorker(pool, redis);
+    console.log("[SERVER] Sync worker started");
 
     // 啟動 HTTP server
     httpServer.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on port ${PORT}`);
-      console.log(`Socket.IO server ready`);
+      console.log(`\n[SERVER] Server running on port ${PORT}`);
+      console.log(`[SERVER] Socket.IO server ready`);
+      console.log(`[SERVER] Listening for requests...\n`);
     });
   } catch (error) {
-    console.error("啟動失敗:", error);
+    console.error("[SERVER] Startup failed:", error);
     process.exit(1);
   }
 }

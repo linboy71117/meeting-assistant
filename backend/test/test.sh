@@ -98,4 +98,21 @@ echo "6) Get single meeting"
 MEETING_SINGLE=$(request GET "$BASE_URL/api/meetings/${MEETING_ID}")
 echo "$MEETING_SINGLE" | jq '.'
 
+echo "7) Add agenda items to meeting"
+ADD_AGENDA=$(request PATCH "$BASE_URL/api/meetings/${MEETING_ID}" '{
+  "agenda":[
+    {"title":"議程項目 1","time":"10:00","owner":"'"${HOST_ID}"'"},
+    {"title":"議程項目 2","time":"10:30"},
+    {"title":"議程項目 3","time":"11:00","note":"討論重點"}
+  ],
+  "date":"2025-12-02"
+}')
+echo "Agenda added:"
+echo "$ADD_AGENDA" | jq '.agenda'
+
+echo "9) Get updated meeting to verify changes"
+FINAL_MEETING=$(request GET "$BASE_URL/api/meetings/${MEETING_ID}")
+echo "Final state:"
+echo "$FINAL_MEETING" | jq '{id: .id, title: .title, description: .description, date: .date, agendaCount: (.agenda | length)}'
+
 echo "Done."
