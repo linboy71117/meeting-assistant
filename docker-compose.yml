@@ -1,0 +1,108 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 服務
+  postgres:
+    image: postgres:16-alpine
+    container_name: meeting-assistant-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=meeting_assistant
+      - POSTGRES_USER=meeting_user
+      - POSTGRES_PASSWORD=meeting_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./DB_scheme.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis 服務
+  redis:
+    image: redis:7-alpine
+    container_name: meeting-assistant-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # 後端服務
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: meeting-assistant-backend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=meeting_assistant
+      - POSTGRES_USER=meeting_user
+      - POSTGRES_PASSWORD=meeting_pass
+      - CORS_ORIGIN=*
+      - NODE_ENV=production
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+      - ./DB_scheme.sql:/app/../DB_scheme.sql:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 前端服務 (Chrome Extension 建置)
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      target: builder
+    container_name: client-test-redis
+    volumes:
+      - ./client:/app
+      - /app/node_modules
+    command: sh -c "npm run build && tail -f /dev/null"
+    depends_on:
+      - backend
+
+  # Cloudflare Tunnel 服務
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: meeting-assistant-cloudflared
+    restart: unless-stopped
+    command: tunnel --config /etc/cloudflared/config.yml run
+    volumes:
+      - ./cloudflared/config.yml:/etc/cloudflared/config.yml:ro
+      - ./cloudflared/credentials.json:/etc/cloudflared/credentials.json:ro
+    depends_on:
+      - backend
+
+volumes:
+  redis-data:
+    driver: local
+  postgres-data:
+    driver: local
+
+networks:
+  default:
+    name: meeting-assistant-network

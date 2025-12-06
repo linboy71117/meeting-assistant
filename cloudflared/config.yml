@@ -1,0 +1,7 @@
+tunnel: c5e6ace7-bef5-4cd8-8c8c-feda9dbb58af
+credentials-file: /etc/cloudflared/credentials.json
+
+ingress:
+  - hostname: meet-assistant-backend.daxuerdeasthsinchu.dpdns.org
+    service: http://backend:3000
+  - service: http_status:404

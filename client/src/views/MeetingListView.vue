@@ -24,14 +24,22 @@
     </div>
 
     <!-- Create Button -->
-    <button class="btn-create" @click="createMeeting">
-      建立新的會議（Create Meeting）
+    <button class="btn-create" @click="createMeeting" :disabled="creating">
+      <span v-if="creating">建立中...</span>
+      <span v-else>建立新的會議（Create Meeting）</span>
     </button>
 
     <!-- Meeting List -->
     <h3 class="section-title">我建立的 / 加入的會議</h3>
 
-    <div class="meeting-list">
+    <p v-if="loading" class="meta">載入中...</p>
+    <p v-else-if="error" class="error">{{ error }}</p>
+
+    <div v-else-if="!meetings.length" class="meta">
+      目前還沒有會議，按上方「建立新的會議」開始。
+    </div>
+
+    <div v-else class="meeting-list">
       <div
         class="meeting-card"
         v-for="m in meetings"
@@ -43,7 +51,7 @@
           <span class="meeting-title">{{ m.title }}</span>
         </div>
 
-        <div class="meta">📅 {{ m.date }}</div>
+        <div class="meta">📅 {{ m.date || '未設定日期' }}</div>
         <div class="meta">🔑 {{ m.inviteCode }}</div>
       </div>
     </div>
@@ -51,46 +59,105 @@
   </div>
 </template>
 
-<script setup>
-import { ref } from "vue";
+<script setup lang="ts">
+import { ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
+
+const API_BASE =
+  (import.meta as any).env?.VITE_BACKEND_URL || "http://localhost:3000";
 
 const router = useRouter();
 
 const role = ref("host");
+const meetings = ref<any[]>([]);
+const loading = ref(false);
+const error = ref("");
+const creating = ref(false);
 
-// Load meetings
-const meetings = ref(
-  JSON.parse(localStorage.getItem("aiMeetingAssistant.meetings") || "[]")
-);
-
-// Create new meeting
-function createMeeting() {
-  const id = crypto.randomUUID();
-
-  // Create meeting object
-  const newMeeting = {
-    id,
-    index: meetings.value.length + 1,
-    title: `新的會議 #${meetings.value.length + 1}`,
-    date: new Date().toLocaleDateString(),
-    inviteCode: Math.random().toString(36).substring(2, 8),
-  };
-
-  // Save into list
-  meetings.value.push(newMeeting);
-  localStorage.setItem("aiMeetingAssistant.meetings", JSON.stringify(meetings.value));
-
-  // Go to meeting page
-  router.push(`/meetings/${id}?new=1`);
+// 簡單用 UUID 產生「abc-defg-hij」風格的 inviteCode
+function generateInviteCodeFromId(id: string): string {
+  const base = id.replace(/-/g, "").slice(0, 10); // 至少 10 chars
+  const p1 = base.slice(0, 3);
+  const p2 = base.slice(3, 7);
+  const p3 = base.slice(7, 10);
+  return [p1, p2, p3].filter(Boolean).join("-");
 }
+
+async function loadMeetings() {
+  loading.value = true;
+  error.value = "";
+  try {
+    const res = await fetch(`${API_BASE}/api/meetings`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    meetings.value = (data as any[]).map((m, idx) => ({
+      ...m,
+      index: idx + 1,
+    }));
+  } catch (e) {
+    console.error("Failed to load meetings", e);
+    error.value = "無法載入會議列表";
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function createMeeting() {
+  creating.value = true;
+  try {
+    const id = crypto.randomUUID();
+    const inviteCode = generateInviteCodeFromId(id);
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+    const payload = {
+      id,
+      inviteCode,
+      title: "新的會議",
+      date: today,
+      description: "",
+      meetUrl: "",
+      summary: "",
+      agenda: [],
+    };
+
+    const res = await fetch(`${API_BASE}/api/meetings/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      alert("建立會議失敗");
+      return;
+    }
+
+    const saved = await res.json();
+    meetings.value.unshift({
+      ...saved,
+      index: meetings.value.length + 1,
+    });
+
+    // 帶 new=1 進去，Detail 可以自動進「編輯模式」
+    router.push(`/meetings/${id}?new=1`);
+  } catch (e) {
+    console.error("Create meeting failed", e);
+    alert("建立會議失敗（連線錯誤）");
+  } finally {
+    creating.value = false;
+  }
+}
+
+onMounted(loadMeetings);
 </script>
 
 <style scoped>
-/* Layout */
+/* ----------------------------
+    For Popup Size Optimization
+ -----------------------------*/
+
 .popup-container {
   width: 100%;
-  max-width: 100% !important; 
+  max-width: 100% !important;
   padding: 14px;
   margin: 0 auto;
   font-family: -apple-system, BlinkMacSystemFont, system-ui;
@@ -128,7 +195,7 @@ function createMeeting() {
   background: white;
   padding: 10px;
   border-radius: 10px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   margin-bottom: 14px;
 }
 
@@ -168,7 +235,7 @@ function createMeeting() {
   background: white;
   border-radius: 10px;
   padding: 12px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   cursor: pointer;
 }
 
@@ -192,5 +259,10 @@ function createMeeting() {
 .meta {
   font-size: 12px;
   color: #555;
+}
+
+.error {
+  font-size: 12px;
+  color: #dc2626;
 }
 </style>
