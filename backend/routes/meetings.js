@@ -293,6 +293,41 @@ module.exports = (pool, redis, io) => {
     }
   });
 
+  router.delete("/:id", async (req, res) => {
+    const { id } = req.params;
+
+    try {
+      const client = await pool.connect();
+      try {
+        // 執行刪除指令
+        // 因為你的 DB schema 有設定 ON DELETE CASCADE
+        // 所以刪除 meetings 時，相關的 participants 和 agenda 也會自動消失
+        const result = await client.query(
+          "DELETE FROM meetings WHERE id = $1 RETURNING id",
+          [id]
+        );
+
+        if (result.rowCount === 0) {
+          return res.status(404).json({ error: "找不到該會議或已刪除" });
+        }
+
+        // 清除 Redis 快取
+        if (redis) {
+          await redis.del(`meeting:${id}`);
+        }
+        
+        // (選填) 也可以廣播給其他人說會議被刪了，這裡先省略
+
+        res.json({ message: "會議已刪除", id });
+      } finally {
+        client.release();
+      }
+    } catch (err) {
+      console.error("Error deleting meeting:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // 更新會議（含 agenda）- 批量議程操作 + 快取更新
   router.patch("/:id", async (req, res) => {
     const { id } = req.params;
