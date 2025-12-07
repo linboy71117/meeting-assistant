@@ -7,6 +7,7 @@ import MeetingAgendaView from "../views/MeetingAgendaView.vue";
 import BrainstormView from "../views/BrainstormView.vue";
 import SettingsView from "../views/SettingsView.vue";
 import HelpView from "../views/HelpView.vue";
+import MeetingRunView from "../views/MeetingRunView.vue";
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -32,6 +33,11 @@ const router = createRouter({
     { 
       path: "/meetings/:id", 
       component: MeetingAgendaView,
+      meta: { requiresAuth: true } 
+    },
+    { 
+      path: "/meetings/:id/run", 
+      component: MeetingRunView,
       meta: { requiresAuth: true } 
     },
     { 

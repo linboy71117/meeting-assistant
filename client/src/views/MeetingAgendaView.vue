@@ -154,6 +154,10 @@
             <span v-else>開啟 Google Meet</span>
           </button>
 
+          <button class="btn-run-mode" @click="startRunMode">
+            ▶ 開始會議 (Run Mode)
+          </button>
+
           <button class="primary-btn" @click="startBrainstorm">
             Brainstorming
           </button>
@@ -377,6 +381,11 @@ async function openGoogleMeet() {
   }
 }
 
+// run meeting 頁面
+function startRunMode() {
+  router.push(`/meetings/${meetingId}/run`);
+}
+
 // Brainstorming 頁面
 function startBrainstorm() {
   router.push(`/meetings/${meetingId}/brainstorm`);
@@ -535,5 +544,20 @@ async function copyInviteCode() {
   font-size: 12px;
   color: #6b7280;
   margin-top: 4px;
+}
+
+.btn-run-mode {
+  background: #10b981; /* 綠色，代表開始 */
+  color: white;
+  border: none;
+  padding: 7px 14px;
+  border-radius: 999px;
+  margin-right: 6px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-run-mode:hover {
+  background: #059669;
 }
 </style>
