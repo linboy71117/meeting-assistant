@@ -153,6 +153,46 @@ module.exports = (pool, redis) => {
     }
   });
 
+  // ------------------------------------------------
+  // 新增：使用者退出會議 (Leave Meeting)
+  // ------------------------------------------------
+  router.delete("/:userId/meetings/:meetingId", async (req, res) => {
+    const { userId, meetingId } = req.params;
+
+    try {
+      const client = await pool.connect();
+      try {
+        // 檢查該使用者是否為 Host (Host 不能退出，只能刪除)
+        // 雖然前端會擋，但後端多做一層檢查比較安全
+        const roleCheck = await client.query(
+          "SELECT role FROM meeting_participants WHERE user_id = $1 AND meeting_id = $2",
+          [userId, meetingId]
+        );
+
+        if (roleCheck.rowCount > 0 && roleCheck.rows[0].role === 'host') {
+          return res.status(400).json({ error: "主持人無法退出會議，請選擇刪除會議。" });
+        }
+
+        // 執行移除指令
+        const result = await client.query(
+          "DELETE FROM meeting_participants WHERE user_id = $1 AND meeting_id = $2",
+          [userId, meetingId]
+        );
+
+        if (result.rowCount === 0) {
+          return res.status(404).json({ error: "您不在該會議中" });
+        }
+
+        res.json({ message: "已退出會議" });
+      } finally {
+        client.release();
+      }
+    } catch (err) {
+      console.error("Error leaving meeting:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // 取得用戶的會議列表 - 使用 Redis 快取單個會議
   router.get("/:userId/meetings", async (req, res) => {
     const { userId } = req.params;
@@ -231,6 +271,7 @@ function groupMeetings(rows) {
         expiresAt: row.expires_at,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
+        role: row.role,
         agenda: [],
       };
       map.set(row.id, m);
