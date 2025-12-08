@@ -154,8 +154,13 @@
             <span v-else>開啟 Google Meet</span>
           </button>
 
-          <button class="primary-btn" @click="startBrainstorm">
-            Brainstorming
+          <button 
+            class="primary-btn" 
+            :class="{'btn-alert': brainstormingActive }" 
+            @click="startBrainstorm"
+          >
+            <span v-if="brainstormingActive">🎉 腦力激盪開始了！點擊進入</span>
+            <span v-else>創建腦力激盪</span>
           </button>
 
           <button class="secondary-btn" @click="startEdit">
@@ -170,14 +175,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { io } from "socket.io-client";
 
 const API_BASE =
   (import.meta as any).env?.VITE_BACKEND_URL || "http://localhost:3000";
 
 const route = useRoute();
 const router = useRouter();
+let socket = null;
 
 const meetingId = route.params.id as string;
 
@@ -185,7 +192,28 @@ const meetingId = route.params.id as string;
 const loading = ref(true);
 const loadError = ref("");
 
+function saveMeetings(list) {
+  localStorage.setItem(MEETINGS_KEY, JSON.stringify(list));
+}
+
 const meeting = ref<any | null>(null);
+const summary = ref("");
+const brainstormingActive = ref(false);
+
+const meetings = ref(loadMeetings());
+
+const meetingIndex = computed(() =>
+  meetings.value.findIndex((m) => m.id === meetingId)
+);
+
+const meeting = computed(() =>
+  meetingIndex.value >= 0 ? meetings.value[meetingIndex.value] : null
+);
+
+// --------------------------------------------------
+// AI Summary
+// --------------------------------------------------
+const summaryKey = `aiMeetingAssistant.summary.${meetingId}`;
 const summary = ref("");
 
 const editable = ref<any | null>(null);
@@ -256,10 +284,33 @@ async function loadMeeting() {
   } finally {
     loading.value = false;
   }
+
+  // 檢查是否有進行中的腦力激盪，並設定brainstorming按鈕狀態
+  const resActive = await fetch(`${API_BASE}/api/brainstorming/${meetingId}/active`);
+  if (resActive.ok) {
+    brainstormingActive.value = true;
+  }
+
+  const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || API_BASE;
+  socket = io(SOCKET_URL);
+
+  socket.emit("join-meeting", meetingId);
+  socket.on("new-brainstorming-created", (brainstormingData) => {
+    console.log("New brainstorming started. Notifying user:", brainstormingData);
+        
+    // 收到事件時，改變brainstorming按鈕狀態
+    brainstormingActive.value = true;
+  });
 }
 
 onMounted(loadMeeting);
+onUnmounted(() => {
+  if (socket) {
+    socket.off("new-brainstorming-created");
+  }
+});
 
+// --------------------------------------------------
 // CRUD for Agenda
 function addAgenda() {
   editableAgenda.value.push({
@@ -379,7 +430,15 @@ async function openGoogleMeet() {
 
 // Brainstorming 頁面
 function startBrainstorm() {
-  router.push(`/meetings/${meetingId}/brainstorm`);
+  if (brainstormingActive.value) {
+        // 如果狀態為 Active (已收到通知)，則執行導航
+        router.replace(`/meetings/${meetingId}/brainstorm/proposal`);
+    } else {
+        // 如果狀態還不是 Active，代表會議中沒有進行中的活動
+        // 或是等待主持人開始。
+        // 此時點擊按鈕，通常會導向創建頁面，讓使用者開始新的活動。
+        router.push(`/meetings/${meetingId}/brainstorm`);
+    }
 }
 
 // 複製邀請碼
@@ -535,5 +594,18 @@ async function copyInviteCode() {
   font-size: 12px;
   color: #6b7280;
   margin-top: 4px;
+}
+
+.btn-alert {
+  background-color: #ff4500; /* 突出的顏色 */
+  color: white;
+  font-weight: bold;
+  animation: pulse 1s infinite; /* 閃爍動畫 */
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.02); } /* 稍微放大 */
+  100% { transform: scale(1); }
 }
 </style>

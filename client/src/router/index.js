@@ -5,8 +5,11 @@ import LoginView from "../views/LoginView.vue";
 import MeetingListView from "../views/MeetingListView.vue";
 import MeetingAgendaView from "../views/MeetingAgendaView.vue";
 import BrainstormView from "../views/BrainstormView.vue";
+import BrainstormProposalView from "../views/BrainstormProposalView.vue";
+import BrainstormCompleteView from "../views/BrainstormCompleteView.vue";
 import SettingsView from "../views/SettingsView.vue";
 import HelpView from "../views/HelpView.vue";
+
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -37,6 +40,16 @@ const router = createRouter({
     { 
       path: "/meetings/:id/brainstorm", 
       component: BrainstormView,
+      meta: { requiresAuth: true } 
+    },
+    { 
+      path: "/meetings/:id/brainstorm/proposal", 
+      component: BrainstormProposalView,
+      meta: { requiresAuth: true } 
+    },
+    { 
+      path: "/meetings/:id/brainstorm/complete", 
+      component: BrainstormCompleteView,
       meta: { requiresAuth: true } 
     },
     { 
