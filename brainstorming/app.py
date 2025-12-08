@@ -4,7 +4,7 @@ import json
 import time # 用於緩存
 from flask import Flask, render_template, request, jsonify, g, redirect, url_for
 from google import genai
-
+# test
 # ⚠️ 注意: 在生產環境中請務必使用環境變數來管理 API 金鑰！
 API_KEY = "AIzaSyDz3RPXx85wdX8II8aoL2jswADJM2N1LcI"
 DATABASE = 'database.db'
