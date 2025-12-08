@@ -175,6 +175,7 @@
 </template>
 
 <script setup lang="ts">
+
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { io } from "socket.io-client";
@@ -192,28 +193,7 @@ const meetingId = route.params.id as string;
 const loading = ref(true);
 const loadError = ref("");
 
-function saveMeetings(list) {
-  localStorage.setItem(MEETINGS_KEY, JSON.stringify(list));
-}
-
 const meeting = ref<any | null>(null);
-const summary = ref("");
-const brainstormingActive = ref(false);
-
-const meetings = ref(loadMeetings());
-
-const meetingIndex = computed(() =>
-  meetings.value.findIndex((m) => m.id === meetingId)
-);
-
-const meeting = computed(() =>
-  meetingIndex.value >= 0 ? meetings.value[meetingIndex.value] : null
-);
-
-// --------------------------------------------------
-// AI Summary
-// --------------------------------------------------
-const summaryKey = `aiMeetingAssistant.summary.${meetingId}`;
 const summary = ref("");
 
 const editable = ref<any | null>(null);
@@ -223,6 +203,8 @@ const isEditing = ref(
 );
 
 const loadingMeet = ref(false);
+const brainstormingActive = ref(false);
+
 
 // Helpers
 function generateInviteCodeFromId(id: string): string {
@@ -310,7 +292,6 @@ onUnmounted(() => {
   }
 });
 
-// --------------------------------------------------
 // CRUD for Agenda
 function addAgenda() {
   editableAgenda.value.push({
