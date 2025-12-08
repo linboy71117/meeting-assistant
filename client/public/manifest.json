@@ -2,7 +2,8 @@
   "manifest_version": 3,
   "name": "AI Meeting Assistant",
   "host_permissions": [
-    "https://meet.google.com/*"
+    "https://meet.google.com/*",
+        "https://meet-assistant-backend.daxuerdeasthsinchu.dpdns.org/*"
   ],
 
   "content_scripts": [

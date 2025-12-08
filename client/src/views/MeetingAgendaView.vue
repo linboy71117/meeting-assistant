@@ -6,9 +6,14 @@
       ← 回到會議列表
     </button>
 
-    <!-- 找不到會議 -->
-    <div v-if="!meeting">
+    <!-- 載入中 / 錯誤 / 找不到 -->
+    <div v-if="loading">
+      <p class="meta">載入中...</p>
+    </div>
+
+    <div v-else-if="!meeting">
       <p class="error">找不到這場會議。</p>
+      <p v-if="loadError" class="error">{{ loadError }}</p>
     </div>
 
     <!-- 找到會議 -->
@@ -34,12 +39,12 @@
         <!-- 描述 -->
         <label class="field">
           <span class="field-label">說明</span>
-          <textarea v-model="editable.description" class="textarea-input" rows="2"/>
+          <textarea v-model="editable.description" class="textarea-input" rows="2" />
         </label>
 
         <!-- 邀請碼 -->
         <div class="field">
-          <div class="field-label">邀請碼（系統自用）</div>
+          <div class="field-label">邀請碼</div>
           <div class="invite-row">
             <span class="code-pill">{{ editable.inviteCode }}</span>
             <button class="small-btn" @click="copyInviteCode">複製</button>
@@ -58,15 +63,17 @@
         <div v-if="editableAgenda.length === 0" class="empty">尚無流程，請新增。</div>
 
         <ul class="agenda-edit-list">
-          <li v-for="(item, idx) in editableAgenda" :key="idx" class="agenda-edit-item">
-
+          <li
+            v-for="(item, idx) in editableAgenda"
+            :key="idx"
+            class="agenda-edit-item"
+          >
             <div class="agenda-edit-header">
               <span>流程 #{{ idx + 1 }}</span>
               <button class="link-btn" @click="removeAgenda(idx)">刪除</button>
             </div>
 
             <div class="agenda-edit-grid">
-
               <label>
                 <span class="sub-label">時間</span>
                 <input v-model="item.time" class="text-input" placeholder="09:00" />
@@ -84,10 +91,9 @@
 
               <label class="full">
                 <span class="sub-label">備註</span>
-                <textarea v-model="item.note" class="textarea-input" rows="2"/>
+                <textarea v-model="item.note" class="textarea-input" rows="2" />
               </label>
             </div>
-
           </li>
         </ul>
 
@@ -95,7 +101,7 @@
 
         <div class="actions">
           <button class="primary-btn" @click="saveMeeting">儲存</button>
-          <button class="ghost-btn" @click="cancelEdit">取消</button>
+          <button class="secondary-btn" @click="cancelEdit">取消</button>
         </div>
 
       </div>
@@ -105,7 +111,7 @@
 
         <h2 class="title">{{ meeting.title }}</h2>
 
-        <p class="meta">日期：{{ meeting.date }}</p>
+        <p class="meta">日期：{{ meeting.date || "未設定" }}</p>
         <p class="meta">
           邀請碼：<span class="code-pill">{{ meeting.inviteCode }}</span>
         </p>
@@ -132,7 +138,7 @@
 
         <p v-else class="empty">尚無流程。</p>
 
-        <!-- ================= AI SUMMARY（顯示區） ================= -->
+        <!-- AI SUMMARY（顯示區） -->
         <section v-if="summary" class="summary-section">
           <h3 class="section-title">會後 AI 總結</h3>
 
@@ -143,7 +149,6 @@
 
         <!-- Buttons -->
         <div class="actions">
-
           <button class="btn-google-meet" @click="openGoogleMeet" :disabled="loadingMeet">
             <span v-if="loadingMeet">建立中...</span>
             <span v-else>開啟 Google Meet</span>
@@ -156,7 +161,6 @@
           <button class="secondary-btn" @click="startEdit">
             編輯流程
           </button>
-
         </div>
 
       </div>
@@ -165,87 +169,98 @@
   </div>
 </template>
 
-
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
+
+const API_BASE =
+  (import.meta as any).env?.VITE_BACKEND_URL || "http://localhost:3000";
 
 const route = useRoute();
 const router = useRouter();
 
-// --------------------------------------------------
-// LocalStorage
-// --------------------------------------------------
-const MEETINGS_KEY = "aiMeetingAssistant.meetings";
-const meetingId = route.params.id;
+const meetingId = route.params.id as string;
 
-function loadMeetings() {
-  const raw = localStorage.getItem(MEETINGS_KEY);
-  return raw ? JSON.parse(raw) : [];
-}
+// 狀態
+const loading = ref(true);
+const loadError = ref("");
 
-function saveMeetings(list) {
-  localStorage.setItem(MEETINGS_KEY, JSON.stringify(list));
-}
-
-const meetings = ref(loadMeetings());
-
-const meetingIndex = computed(() =>
-  meetings.value.findIndex((m) => m.id === meetingId)
-);
-
-const meeting = computed(() =>
-  meetingIndex.value >= 0 ? meetings.value[meetingIndex.value] : null
-);
-
-// --------------------------------------------------
-// AI Summary
-// --------------------------------------------------
-const summaryKey = `aiMeetingAssistant.summary.${meetingId}`;
+const meeting = ref<any | null>(null);
 const summary = ref("");
 
-onMounted(() => {
-  const saved = localStorage.getItem(summaryKey);
-  if (saved) summary.value = saved;
-});
+const editable = ref<any | null>(null);
+const editableAgenda = ref<any[]>([]);
+const isEditing = ref(
+  route.query.edit === "1" || route.query.new === "1"
+);
 
-// --------------------------------------------------
-// 編輯資料
-// --------------------------------------------------
-const editable = ref(null);
-const editableAgenda = ref([]);
-const isEditing = ref(route.query.edit === "1");
+const loadingMeet = ref(false);
+
+// Helpers
+function generateInviteCodeFromId(id: string): string {
+  const base = id.replace(/-/g, "").slice(0, 10);
+  const p1 = base.slice(0, 3);
+  const p2 = base.slice(3, 7);
+  const p3 = base.slice(7, 10);
+  return [p1, p2, p3].filter(Boolean).join("-");
+}
+
+function normalizeDate(value: any): string {
+  if (!value) return "";
+  if (typeof value === "string") return value.slice(0, 10);
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return "";
+}
+
+const agendaToShow = computed(() => meeting.value?.agenda ?? []);
 
 function resetEditableFromMeeting() {
   if (!meeting.value) return;
-
   editable.value = {
-    title: meeting.value.title,
-    date: meeting.value.date,
-    description: meeting.value.description || "",
-    inviteCode: meeting.value.inviteCode,
-    meetUrl: meeting.value.meetUrl || "",
+    title: meeting.value.title ?? "",
+    date: normalizeDate(meeting.value.date),
+    description: meeting.value.description ?? "",
+    inviteCode:
+      meeting.value.inviteCode || generateInviteCodeFromId(meetingId),
+    meetUrl: meeting.value.meetUrl ?? "",
   };
-
-  editableAgenda.value = (meeting.value.agenda || []).map(a => ({
-    time: a.time || "",
-    title: a.title || "",
-    owner: a.owner || "",
-    note: a.note || "",
-  }));
+  editableAgenda.value = (meeting.value.agenda || []).map(
+    (a: any, idx: number) => ({
+      orderIndex: a.orderIndex ?? idx,
+      time: a.time ?? "",
+      title: a.title ?? "",
+      owner: a.owner ?? "",
+      note: a.note ?? "",
+    })
+  );
+  summary.value = meeting.value.summary ?? "";
 }
 
-onMounted(() => {
-  if (meeting.value) resetEditableFromMeeting();
-});
+async function loadMeeting() {
+  loading.value = true;
+  loadError.value = "";
+  try {
+    const res = await fetch(`${API_BASE}/api/meetings/${meetingId}`);
+    if (res.status === 404) {
+      meeting.value = null;
+      return;
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    meeting.value = data;
+    resetEditableFromMeeting();
+  } catch (e) {
+    console.error("Load meeting failed", e);
+    loadError.value = "載入會議失敗";
+    meeting.value = null;
+  } finally {
+    loading.value = false;
+  }
+}
 
-const agendaToShow = computed(() =>
-  meeting.value?.agenda?.length ? meeting.value.agenda : []
-);
+onMounted(loadMeeting);
 
-// --------------------------------------------------
 // CRUD for Agenda
-// --------------------------------------------------
 function addAgenda() {
   editableAgenda.value.push({
     time: "",
@@ -255,27 +270,52 @@ function addAgenda() {
   });
 }
 
-function removeAgenda(i) {
+function removeAgenda(i: number) {
   editableAgenda.value.splice(i, 1);
 }
 
-function saveMeeting() {
-  const idx = meetingIndex.value;
-  if (idx < 0) return;
+async function saveMeeting() {
+  if (!editable.value) return;
 
-  meetings.value[idx] = {
-    ...meeting.value,
-    title: editable.value.title,
-    date: editable.value.date,
-    description: editable.value.description,
-    inviteCode: editable.value.inviteCode,
-    meetUrl: editable.value.meetUrl,
-    agenda: editableAgenda.value,
+  const payload = {
+    id: meetingId,
+    inviteCode:
+      editable.value.inviteCode ||
+      meeting.value?.inviteCode ||
+      generateInviteCodeFromId(meetingId),
+    title: editable.value.title || "未命名會議",
+    date: editable.value.date || null,
+    description: editable.value.description || "",
+    summary: summary.value || "",
+    agenda: editableAgenda.value.map((item, index) => ({
+      orderIndex: index,
+      time: item.time || "",
+      title: item.title || "",
+      owner: item.owner || "",
+      note: item.note || "",
+    })),
   };
 
-  saveMeetings(meetings.value);
-  isEditing.value = false;
-  router.replace(`/meetings/${meetingId}`);
+  try {
+    const res = await fetch(`${API_BASE}/api/meetings/${meetingId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      alert("儲存失敗");
+      return;
+    }
+    const saved = await res.json();
+    meeting.value = saved;
+    resetEditableFromMeeting();
+    isEditing.value = false;
+
+    router.replace({ path: `/meetings/${meetingId}` });
+  } catch (e) {
+    console.error("Save meeting failed", e);
+    alert("儲存失敗（連線錯誤）");
+  }
 }
 
 function startEdit() {
@@ -288,16 +328,12 @@ function cancelEdit() {
   isEditing.value = false;
 }
 
-// --------------------------------------------------
 // Google Meet 自動建立
-// --------------------------------------------------
-const loadingMeet = ref(false);
-
 async function createNewGoogleMeet() {
   const w = window.open("https://meet.google.com/new", "_blank");
   if (!w) return null;
 
-  await new Promise(r => setTimeout(r, 1500));
+  await new Promise((r) => setTimeout(r, 1500));
 
   try {
     return w.location.href;
@@ -308,43 +344,54 @@ async function createNewGoogleMeet() {
 
 async function openGoogleMeet() {
   loadingMeet.value = true;
-  const idx = meetingIndex.value;
+  try {
+    let url = meeting.value?.meetUrl || editable.value?.meetUrl || "";
 
-  let url = meeting.value.meetUrl;
+    if (!url) {
+      const newUrl = await createNewGoogleMeet();
+      if (!newUrl) {
+        alert("無法建立 Google Meet！");
+        return;
+      }
 
-  if (!url) {
-    const newUrl = await createNewGoogleMeet();
-    if (!newUrl) {
-      alert("無法建立 Google Meet！");
-      loadingMeet.value = false;
-      return;
+      if (!editable.value) {
+        editable.value = {
+          title: meeting.value?.title ?? "",
+          date: normalizeDate(meeting.value?.date),
+          description: meeting.value?.description ?? "",
+          inviteCode:
+            meeting.value?.inviteCode || generateInviteCodeFromId(meetingId),
+          meetUrl: newUrl,
+        };
+      } else {
+        editable.value.meetUrl = newUrl;
+      }
+
+      await saveMeeting();
+      url = newUrl;
     }
-    meetings.value[idx].meetUrl = newUrl;
-    saveMeetings(meetings.value);
-    url = newUrl;
+
+    window.open(url, "_blank");
+  } finally {
+    loadingMeet.value = false;
   }
-
-  window.open(url, "_blank");
-
-  loadingMeet.value = false;
 }
 
-// --------------------------------------------------
-// Brainstorming
-// --------------------------------------------------
+// Brainstorming 頁面
 function startBrainstorm() {
   router.push(`/meetings/${meetingId}/brainstorm`);
 }
 
-// --------------------------------------------------
 // 複製邀請碼
-// --------------------------------------------------
 async function copyInviteCode() {
-  await navigator.clipboard.writeText(editable.value.inviteCode);
+  const code =
+    editable.value?.inviteCode ||
+    meeting.value?.inviteCode ||
+    generateInviteCodeFromId(meetingId);
+  await navigator.clipboard.writeText(code);
   alert("已複製！");
 }
 </script>
-
 
 <style scoped>
 /* ====== Layout ====== */
@@ -376,6 +423,11 @@ async function copyInviteCode() {
   color: #6b7280;
 }
 
+.error {
+  font-size: 12px;
+  color: #dc2626;
+}
+
 .desc {
   margin: 8px 0;
   font-size: 13px;
@@ -394,6 +446,10 @@ async function copyInviteCode() {
   padding: 2px 6px;
   border-radius: 6px;
   font-size: 11px;
+}
+
+.agenda-list {
+  margin-top: 6px;
 }
 
 .agenda-item {
@@ -473,5 +529,11 @@ async function copyInviteCode() {
   border: 1px solid #ccc;
   padding: 7px 14px;
   border-radius: 999px;
+}
+
+.empty {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 4px;
 }
 </style>
