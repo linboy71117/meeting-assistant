@@ -383,7 +383,27 @@ async function openGoogleMeet() {
 
 // run meeting 頁面
 function startRunMode() {
-  router.push(`/meetings/${meetingId}/run`);
+  // 判斷是否在 Chrome Extension 環境下
+  if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getURL) {
+    // 1. 取得 Extension 內部的完整網址
+    // 格式會是：chrome-extension://<你的ID>/index.html#/meetings/xxx/run
+    const url = chrome.runtime.getURL(`index.html#/meetings/${meetingId}/run`);
+    
+    // 2. 開啟一個新視窗 (或是用 chrome.tabs.create)
+    // 這裡建議開一個 "popup" 類型的視窗，比較像獨立 App
+    chrome.windows.create({
+      url: url,
+      type: "popup", // 這會是一個沒有網址列的乾淨視窗
+      width: 500,
+      height: 700
+    });
+    
+    // 3. (選填) 關閉原本的 extension popup
+    // window.close(); 
+  } else {
+    // 一般網頁環境 (Localhost 開發時) 照舊
+    router.push(`/meetings/${meetingId}/run`);
+  }
 }
 
 // Brainstorming 頁面

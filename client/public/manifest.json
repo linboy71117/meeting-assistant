@@ -5,6 +5,9 @@
     "https://meet.google.com/*",
         "https://meet-assistant-backend.daxuerdeasthsinchu.dpdns.org/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
 
   "content_scripts": [
     {
@@ -17,7 +20,7 @@
   "version": "1.0.0",
   "description": "幫助與會者開口、設計會議流程的 AI Meeting 工具。",
   "action": {
-    "default_popup": "index.html",
+    
     "default_title": "AI Meeting Assistant"
   },
   "icons": {

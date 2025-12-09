@@ -209,6 +209,11 @@ onUnmounted(() => {
     timerInterval.value = null;
   }
   socket.off('timer-sync', handleTimerSync);
+
+  if (socket.connected) {
+    socket.disconnect();
+    console.log("Socket disconnected on unmount");
+  }
 });
 
 // === Timer 操作 (Host 專用) ===

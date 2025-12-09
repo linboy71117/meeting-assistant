@@ -7,6 +7,11 @@ const URL = (import.meta.env.VITE_BACKEND_URL) || "http://localhost:3000";
 const socket = io(URL, {
   autoConnect: false, // 建議設為 false，等我們需要時再手動 socket.connect()
   transports: ["websocket"], // 強制使用 WebSocket 協定，效能較好
+
+  reconnection: true, // 啟用自動重連
+  reconnectionAttempts: 5, // 最多重連 5 次
+  reconnectionDelay: 1000, // 每次重連間隔 1 秒
+  reconnectionDelayMax: 5000, // 最長重連間隔 5 秒
 });
 
 // 方便 Debug：監聽連線狀態
