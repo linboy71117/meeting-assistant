@@ -77,6 +77,11 @@
 
         <div class="meta">📅 {{ m.date || '未設定日期' }}</div>
         <div class="meta">🔑 {{ m.inviteCode }}</div>
+        <div v-if="m.inviteCode" class="meta">
+          <a :href="`https://meet.google.com/${m.inviteCode}`" target="_blank" rel="noopener noreferrer" class="meet-link">
+            📞 Google Meet
+          </a>
+        </div>
       </div>
     </div>
 
@@ -505,5 +510,17 @@ onMounted(loadMeetings);
   opacity: 1;
   background-color: #f3f4f6; /* 灰色背景 */
   transform: scale(1.1);
+}
+
+.meet-link {
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.meet-link:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
 }
 </style>
