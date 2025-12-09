@@ -6,124 +6,129 @@
         <p class="subtitle">您的智慧會議助手</p>
       </div>
 
-      <div class="tabs">
-        <button 
-          :class="['tab-btn', { active: !isRegister }]" 
-          @click="toggleMode(false)"
-        >
-          登入
+      <div class="auth-form">
+        <button @click="startGoogleLogin" class="google-login-btn" :disabled="isLoading">
+          <span v-if="!isLoading">🔐 使用 Google 帳號登入</span>
+          <span v-else>
+            <span class="spinner"></span>
+            登入中...
+          </span>
         </button>
-        <button 
-          :class="['tab-btn', { active: isRegister }]" 
-          @click="toggleMode(true)"
-        >
-          註冊新帳號
-        </button>
-      </div>
-
-      <form @submit.prevent="handleSubmit" class="auth-form">
         
-        <div v-if="isRegister" class="form-group slide-in">
-          <label for="name">您的稱呼 (Name)</label>
-          <input 
-            id="name"
-            v-model="form.name" 
-            type="text" 
-            placeholder="例如: Alex Chen"
-            required
-          />
+        <div v-if="error" class="error-box">
+          {{ error }}
         </div>
-
-        <div class="form-group">
-          <label for="email">電子信箱 (Email)</label>
-          <input 
-            id="email"
-            v-model="form.email" 
-            type="email" 
-            placeholder="name@example.com"
-            required
-          />
-        </div>
-
-        <div v-if="errorMsg" class="error-box">
-          {{ errorMsg }}
-        </div>
-
-        <button type="submit" class="submit-btn" :disabled="loading">
-          <span v-if="loading" class="spinner"></span>
-          <span v-else>{{ isRegister ? '立即註冊' : '進入系統' }}</span>
-        </button>
-
-      </form>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
+import { getAPIBase, getGoogleClientID } from '../utils/apiClient';
 
 const router = useRouter();
-const API_BASE = (import.meta as any).env?.VITE_BACKEND_URL || "http://localhost:3000";
+const isLoading = ref(false);
+const error = ref('');
 
-// 狀態
-const isRegister = ref(false); // 預設為登入模式
-const loading = ref(false);
-const errorMsg = ref('');
-
-const form = reactive({
-  name: '',
-  email: ''
-});
-
-// 切換模式時清空錯誤
-function toggleMode(registerMode: boolean) {
-  isRegister.value = registerMode;
-  errorMsg.value = '';
-}
-
-async function handleSubmit() {
-  loading.value = true;
-  errorMsg.value = '';
-
-  try {
-    const endpoint = isRegister.value ? '/api/users/register' : '/api/users/login';
+// 等待 postMessage 的 Promise
+const waitForAuthMessage = (): Promise<any> => {
+  return new Promise((resolve) => {
+    const handler = (event: MessageEvent) => {
+      const data = event.data;
+      
+      // 驗證數據結構
+      if (data && (data.success !== undefined || data.error)) {
+        window.removeEventListener('message', handler);
+        resolve(data);
+      }
+    };
     
-    // 根據模式準備 Payload
-    // 註冊需要 name + email，登入只需要 email
-    const payload = isRegister.value 
-      ? { name: form.name, email: form.email }
-      : { email: form.email };
+    window.addEventListener('message', handler);
+    
+    // 30秒超時
+    setTimeout(() => {
+      window.removeEventListener('message', handler);
+      resolve({ error: '登入超時' });
+    }, 30000);
+  });
+};
 
-    const res = await fetch(`${API_BASE}${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      // 處理後端回傳的錯誤 (例如: "用戶不存在" 或 "Email 已被註冊")
-      throw new Error(data.error || '請求失敗');
+const startGoogleLogin = async () => {
+  isLoading.value = true;
+  error.value = '';
+  
+  try {
+    const clientId = getGoogleClientID();
+    const backendUrl = getAPIBase();
+    const redirectUri = `${backendUrl}/api/users/auth/google/callback`;
+    
+    if (!clientId) {
+      throw new Error('Google Client ID 未設定');
     }
-
-    // 登入/註冊成功
-    // 1. 儲存 User ID 到 LocalStorage (這是整個 App 辨識身份的關鍵)
-    localStorage.setItem('meeting_user_id', data.id);
-    localStorage.setItem('meeting_user_name', data.name);
-    localStorage.setItem('meeting_user_email', data.email);
-
-    // 2. 跳轉到會議列表 (創建會議頁面)
-    router.push('/meetings');
-
+    
+    // 生成隨機 state
+    const state = Math.random().toString(36).substring(7);
+    localStorage.setItem('oauth_state', state);
+    
+    // 構造 Google OAuth 授權 URL
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'openid email profile',
+      state: state
+    });
+    
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+    
+    // 開啟 OAuth 授權視窗
+    const width = 500;
+    const height = 600;
+    const left = (screen.width - width) / 2;
+    const top = (screen.height - height) / 2;
+    
+    const authWindow = window.open(
+      authUrl,
+      'google_oauth',
+      `width=${width},height=${height},left=${left},top=${top},resizable,scrollbars`
+    );
+    
+    if (!authWindow) {
+      throw new Error('無法開啟授權視窗，請檢查瀏覽器設定');
+    }
+    
+    // 等待認証結果
+    const result = await waitForAuthMessage();
+    
+    if (result.success) {
+      // 登入成功
+      localStorage.setItem('meeting_user_id', result.user_id);
+      localStorage.setItem('meeting_user_email', result.email);
+      
+      // 導向會議列表
+      router.push('/meetings');
+    } else {
+      // 登入失敗
+      error.value = `登入失敗: ${result.error || '未知錯誤'}`;
+    }
+    
   } catch (err: any) {
-    console.error(err);
-    errorMsg.value = err.message;
+    console.error('OAuth 登入錯誤:', err);
+    error.value = err.message;
   } finally {
-    loading.value = false;
+    isLoading.value = false;
   }
-}
+};
+
+onMounted(() => {
+  // 檢查是否已登入
+  const userId = localStorage.getItem('meeting_user_id');
+  if (userId) {
+    router.push('/meetings');
+  }
+});
 </script>
 
 <style scoped>
@@ -167,33 +172,6 @@ async function handleSubmit() {
   font-size: 14px;
 }
 
-/* 切換按鈕區 */
-.tabs {
-  display: flex;
-  background: #f1f3f5;
-  padding: 4px;
-  border-radius: 12px;
-  margin-bottom: 24px;
-}
-
-.tab-btn {
-  flex: 1;
-  padding: 10px;
-  border: none;
-  background: transparent;
-  color: #7f8c8d;
-  font-weight: 600;
-  cursor: pointer;
-  border-radius: 8px;
-  transition: all 0.2s ease;
-}
-
-.tab-btn.active {
-  background: white;
-  color: #0b57d0;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-}
-
 /* 表單樣式 */
 .auth-form {
   display: flex;
@@ -201,36 +179,8 @@ async function handleSubmit() {
   gap: 16px;
 }
 
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  text-align: left;
-}
-
-.form-group label {
-  font-size: 13px;
-  font-weight: 600;
-  color: #34495e;
-}
-
-.form-group input {
-  padding: 12px 14px;
-  border: 1px solid #e0e0e0;
-  border-radius: 10px;
-  font-size: 15px;
-  transition: border-color 0.2s;
-  background: #fdfdfd;
-}
-
-.form-group input:focus {
-  outline: none;
-  border-color: #0b57d0;
-  background: white;
-}
-
-/* 按鈕樣式 */
-.submit-btn {
+/* Google 登入按鈕 */
+.google-login-btn {
   margin-top: 10px;
   background: #0b57d0;
   color: white;
@@ -244,13 +194,14 @@ async function handleSubmit() {
   display: flex;
   justify-content: center;
   align-items: center;
+  gap: 8px;
 }
 
-.submit-btn:hover:not(:disabled) {
+.google-login-btn:hover:not(:disabled) {
   background: #0842a0;
 }
 
-.submit-btn:disabled {
+.google-login-btn:disabled {
   background: #a0c3ff;
   cursor: not-allowed;
 }
@@ -267,25 +218,16 @@ async function handleSubmit() {
 
 /* Loading 動畫 */
 .spinner {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   border: 2px solid rgba(255,255,255,0.3);
   border-radius: 50%;
   border-top-color: white;
   animation: spin 0.8s linear infinite;
+  display: inline-block;
 }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
-}
-
-/* 簡單的淡入動畫 */
-.slide-in {
-  animation: fadeIn 0.3s ease-in-out;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-5px); }
-  to { opacity: 1; transform: translateY(0); }
 }
 </style>
