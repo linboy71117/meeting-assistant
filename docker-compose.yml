@@ -60,6 +60,7 @@ services:
       - ./backend:/app
       - /app/node_modules
       - ./DB_scheme.sql:/app/../DB_scheme.sql:ro
+      - ./oauth:/app/oauth:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -80,6 +81,7 @@ services:
     container_name: client-test-redis
     volumes:
       - ./client:/app
+      - ./oauth:/app/public/oauth:ro
     command: sh -c "npm ci && npm run build && tail -f /dev/null"
     depends_on:
       - backend

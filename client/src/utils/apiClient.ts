@@ -13,6 +13,13 @@ export function getAPIBase(): string {
 /**
  * 取得 Google OAuth Client ID
  */
-export function getGoogleClientID(): string {
-  return (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID;
+export async function getGoogleClientID(): Promise<string> {
+  try {
+    const response = await fetch('/oauth/client_secret.json');
+    const config = await response.json();
+    return config.web?.client_id;
+  } catch (error) {
+    console.error('Failed to load Google Client ID:', error);
+    throw new Error('Unable to load Google Client ID');
+  }
 }
