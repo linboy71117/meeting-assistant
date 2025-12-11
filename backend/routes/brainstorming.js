@@ -1,7 +1,44 @@
 // routes/brainstormings.js - 腦力激盪相關 API
 
 const express = require("express");
+const { Worker } = require('worker_threads');
 const router = express.Router();
+
+// 💡 定義 AI 處理中的狀態標記
+const AI_STATUS_PROCESSING = 'PROCESSING...';
+
+/**
+ * 處理 Worker Thread 返回的結果，並更新資料庫和通知客戶端。
+ * @param {object} result - 包含分析結果的物件
+ * @param {object} pool - PostgreSQL 連線池
+ * @param {object} io - Socket.IO 實例
+ */
+function handleWorkerResult(result, pool, io) {
+    if (result.success) {
+        const { meetingId, summary } = result;
+        
+        // 1. 儲存 AI 分析結果到資料庫
+        pool.query(
+            `UPDATE brainstormings SET ai_summary = $1 WHERE meeting_id = $2`,
+            [summary, meetingId]
+        )
+        .then(() => {
+            console.log(`[Main Thread] AI analysis saved for meeting ${meetingId}.`);
+            // 2. 使用 Socket.IO 通知客戶端
+            io.to(`meeting-${meetingId}`).emit("ai-analysis-completed", {
+                meetingId: meetingId,
+                ai_summary: summary
+            });
+        })
+        .catch(dbErr => {
+            console.error(`[Main Thread] DB update failed for AI summary:`, dbErr);
+        });
+    } else {
+        console.error(`[Main Thread] AI analysis worker failed for meeting ${result.meetingId}:`, result.error);
+        // 可以在這裡發送一個失敗通知給客戶端或記錄錯誤
+    }
+}
+
 
 module.exports = (pool, redis, io) => {
     // 創建腦力激盪
@@ -165,7 +202,7 @@ module.exports = (pool, redis, io) => {
         console.log(`[GET /brainstormings/${meetingId}/complete] Fetching brainstorming results`);
 
         try {
-            const brainstorming = await pool.query(
+            const brainstormingQuery = await pool.query(
                 `SELECT *
                 FROM brainstormings
                 WHERE meeting_id = $1
@@ -173,16 +210,18 @@ module.exports = (pool, redis, io) => {
                 LIMIT 1`,
                 [meetingId]
             );
-            console.log(`[GET /brainstormings/${meetingId}/complete] Brainstorming fetched:`, brainstorming.rows);
+            // console.log(`[GET /brainstormings/${meetingId}/complete] Brainstorming fetched:`, brainstormingQuery.rows);
 
-            if (brainstorming.rowCount === 0) {
+            if (brainstormingQuery.rowCount === 0) {
                 console.warn(`[GET /brainstormings/${meetingId}/complete] Brainstorming not found`);
                 return res.status(404).json({ error: "Brainstorming not found" });
             }
 
-            const { created_at, expires_at } = brainstorming.rows[0];
+            const brainstorming = brainstormingQuery.rows[0];
+            // 💡 修正：使用 id 和 ai_summary
+            const { created_at, expires_at, ai_summary } = brainstorming;
 
-            const items = await pool.query(
+            const itemsQuery = await pool.query(
                 `
                 SELECT *
                 FROM brainstorming_items
@@ -194,11 +233,62 @@ module.exports = (pool, redis, io) => {
                 // 參數：[會議 ID, 腦力激盪建立時間, 腦力激盪到期時間]
                 [meetingId, created_at, expires_at] 
             );
-            console.log(`[GET /brainstormings/${meetingId}/complete] Ideas fetched:`, items.rows);
+            const ideas = itemsQuery.rows;
+            console.log(`[GET /brainstormings/${meetingId}/complete] Ideas fetched:`, ideas);
 
+            // ----------------------------------------------------
+            // 3. 檢查 AI 總結狀態，並啟動 Worker 執行背景任務
+            // ----------------------------------------------------
+            // 💡 檢查條件：ai_summary 必須為 NULL (未啟動過) 且想法數量 > 0
+            const shouldStartWorker = (!ai_summary || ai_summary === AI_STATUS_PROCESSING) && ideas.length > 0;
+            
+            if (shouldStartWorker) {
+                
+                // 💡 步驟 3A: 在啟動 Worker 之前，先將 DB 狀態設為 PROCESSING
+                if (!ai_summary) {
+                    await pool.query(
+                        `UPDATE brainstormings 
+                         SET ai_summary = $1 
+                         WHERE meeting_id = $2`,
+                        [AI_STATUS_PROCESSING, meetingId]
+                    );
+                    console.log(`[GET /complete] DB locked for AI analysis: ${meetingId}`);
+                }
+                
+                // 💡 步驟 3B: 立即啟動 Worker Thread
+                const worker = new Worker('./routes/worker/ai_analysis.js', {
+                    workerData: {
+                        meetingId: meetingId,
+                        topic: brainstorming.topic,
+                        ideasList: ideas.map(item => item.idea) 
+                    }
+                });
+
+                // 設置 Worker 的事件監聽器，使用 bind 確保 pool 和 io 傳遞正確
+                worker.on('message', (result) => {
+                    handleWorkerResult(result, pool, io)
+                }); 
+                worker.on('error', (err) => {
+                    console.error(`[Main Thread] Worker encountered a critical error:`, err);
+                });
+                worker.on('exit', (code) => {
+                    if (code !== 0) {
+                        console.error(`[Main Thread] Worker stopped with exit code ${code}`);
+                    }
+                });
+
+                console.log(`[GET /complete] AI analysis job started in Worker Thread.`);
+            }
+            
+            // 4. 立即回傳結果
+            // 注意：我們回傳的 brainstorming.ai_summary 可能是 NULL、最終總結或 'PROCESSING...'
             res.json({
-                brainstorming: brainstorming.rows[0],
-                ideas: items.rows
+                brainstorming: { 
+                    ...brainstorming, 
+                    // 💡 確保回傳最新的狀態，包含可能的 'PROCESSING...'
+                    ai_summary: shouldStartWorker && !ai_summary ? AI_STATUS_PROCESSING : ai_summary 
+                }, 
+                ideas: ideas
             });
 
         } catch (err) {
@@ -209,3 +299,5 @@ module.exports = (pool, redis, io) => {
 
     return router;
 };
+
+

@@ -55,6 +55,8 @@ CREATE TABLE IF NOT EXISTS brainstormings (
   id             BIGSERIAL PRIMARY KEY,
   meeting_id     UUID NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
   topic          TEXT NOT NULL,
+  goals          TEXT,
+  ai_summary     TEXT,
   expires_at     TIMESTAMPTZ,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
