@@ -9,6 +9,7 @@ import BrainstormProposalView from "../views/BrainstormProposalView.vue";
 import BrainstormCompleteView from "../views/BrainstormCompleteView.vue";
 import SettingsView from "../views/SettingsView.vue";
 import HelpView from "../views/HelpView.vue";
+import MeetingRunView from "../views/MeetingRunView.vue";
 
 
 const router = createRouter({
@@ -35,6 +36,11 @@ const router = createRouter({
     { 
       path: "/meetings/:id", 
       component: MeetingAgendaView,
+      meta: { requiresAuth: true } 
+    },
+    { 
+      path: "/meetings/:id/run", 
+      component: MeetingRunView,
       meta: { requiresAuth: true } 
     },
     { 

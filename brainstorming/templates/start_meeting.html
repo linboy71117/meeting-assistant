@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>💡 發起腦力激盪會議</title>
+    <style>
+        body { font-family: sans-serif; margin: 50px; background-color: #f4f7f6; display: flex; justify-content: center; align-items: center; min-height: 80vh; }
+        .container { max-width: 500px; background: #fff; padding: 40px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); text-align: center; }
+        h1 { color: #007bff; margin-bottom: 30px; }
+        #topic-input { width: 100%; padding: 15px; margin-bottom: 20px; border: 1px solid #ccc; border-radius: 6px; resize: none; font-size: 1.1em; }
+        button { padding: 15px 30px; background-color: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; transition: background-color 0.3s; font-size: 1.2em; }
+        button:hover { background-color: #218838; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 啟動新的腦力激盪會議</h1>
+        <p>請發起人輸入本次討論的主題：</p>
+        <textarea id="topic-input" placeholder="例如：期末專題的創新方向" rows="3"></textarea>
+        <button onclick="startMeeting()">開始 Brain-Storming</button>
+    </div>
+
+    <script>
+        async function startMeeting() {
+            const topic = document.getElementById('topic-input').value.trim();
+            if (topic.length < 5) {
+                alert('主題太短了，請輸入一個明確的主題 (至少5個字)。');
+                return;
+            }
+
+            try {
+                const response = await fetch('/start_meeting_submit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ topic: topic })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert('會議已發起！所有成員將進入提案頁面。');
+                    // 成功發起後，導向提案頁面
+                    window.location.href = '/proposals';
+                } else {
+                    alert(`發起失敗: ${result.message}`);
+                }
+            } catch (error) {
+                console.error('Error starting meeting:', error);
+                alert('網路錯誤，發起會議失敗。');
+            }
+        }
+    </script>
+</body>
+</html>

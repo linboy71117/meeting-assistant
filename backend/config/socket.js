@@ -17,6 +17,8 @@ function setupSocketIO(httpServer, redis) {
     },
   });
 
+  const meetingTimerState = new Map();
+
   io.on("connection", (socket) => {
     console.log("Client connected:", socket.id);
 
@@ -29,6 +31,13 @@ function setupSocketIO(httpServer, redis) {
       const meetingData = await redis.get(`meeting:${meetingId}`);
       if (meetingData) {
         socket.emit("meeting-data", JSON.parse(meetingData));
+      }
+
+      const timerState = meetingTimerState.get(meetingId);
+      if (timerState) {
+        // 只發給這個剛連進來的 socket (不用廣播)
+        socket.emit("timer-sync", timerState);
+        console.log(`Sent initial timer state to ${socket.id}`);
       }
     });
 
@@ -44,6 +53,26 @@ function setupSocketIO(httpServer, redis) {
 
       await redis.set(`meeting:${meetingId}`, JSON.stringify(content));
       socket.to(`meeting-${meetingId}`).emit("meeting-updated", content);
+    });
+
+    socket.on("sync-timer", (data) => {
+      const { meetingId, currentIndex, timeLeft, isRunning } = data;
+
+      // ⭐ 1. 關鍵修正：把最新的狀態存進後端的 Map
+      meetingTimerState.set(meetingId, {
+        currentIndex,
+        timeLeft,
+        isRunning
+      });
+    
+      // 2. 廣播給房間內其他人
+      socket.to(`meeting-${meetingId}`).emit("timer-sync", {
+        currentIndex,
+        timeLeft,
+        isRunning
+      });
+      
+      // (原本多餘的重複 emit 已刪除)
     });
 
     // 同步腦力激盪資料

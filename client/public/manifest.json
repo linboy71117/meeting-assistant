@@ -1,11 +1,23 @@
 {
   "manifest_version": 3,
   "name": "AI Meeting Assistant",
+  "version": "1.0.0",
+  "description": "幫助與會者開口、設計會議流程的 AI Meeting 工具。",
+  "permissions": ["tabs"],
   "host_permissions": [
     "https://meet.google.com/*",
-        "https://meet-assistant-backend.daxuerdeasthsinchu.dpdns.org/*"
+    "https://meet-assistant-backend.daxuerdeasthsinchu.dpdns.org/*"
   ],
 
+  "action": {
+    "default_title": "AI Meeting Assistant"
+  },
+  "icons": {
+    "128": "icon128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": ["https://meet.google.com/*"],
@@ -14,16 +26,7 @@
       "run_at": "document_idle"
     }
   ],
-  "version": "1.0.0",
-  "description": "幫助與會者開口、設計會議流程的 AI Meeting 工具。",
-  "action": {
-    "default_popup": "index.html",
-    "default_title": "AI Meeting Assistant"
-  },
-  "icons": {
-    "128": "icon128.png"
-  },
-    "web_accessible_resources": [
+  "web_accessible_resources": [
     {
       "resources": [
         "index.html",
@@ -31,6 +34,5 @@
       ],
       "matches": ["https://meet.google.com/*"]
     }
-  ],
-  "permissions": ["tabs"]
+  ]
 }

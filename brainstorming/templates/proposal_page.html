@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>💡 互動式會議分析助理 - 提案頁面</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; background-color: #f4f7f6; color: #333; }
+        .container { max-width: 900px; margin: auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); }
+        #meeting-topic { color: #dc3545; text-align: center; margin-bottom: 20px; font-size: 1.8em; padding: 10px; background-color: #fff3f5; border-radius: 8px;}
+        .input-group { display: flex; gap: 10px; margin-bottom: 20px; }
+        #proposal-input { flex-grow: 1; padding: 12px; border: 1px solid #ccc; border-radius: 6px; resize: vertical; min-height: 80px; }
+        #user-name { width: 150px; padding: 12px; border: 1px solid #ccc; border-radius: 6px; }
+        button { padding: 10px 20px; background-color: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; transition: background-color 0.3s; }
+        button:hover { background-color: #218838; }
+        .reset-button { background-color: #dc3545; }
+        .reset-button:hover { background-color: #c82333; }
+        .section { margin-top: 30px; padding: 20px; border: 1px dashed #007bff; border-radius: 8px; background-color: #e9f7ff; }
+        #analysis-output { white-space: pre-wrap; background: #f8f9fa; border: 1px solid #dee2e6; padding: 15px; border-radius: 6px; min-height: 200px; }
+        .proposal-list { list-style: none; padding: 0; }
+        .proposal-list li { background: #f0f0f0; margin-bottom: 8px; padding: 10px; border-left: 5px solid #007bff; border-radius: 4px; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2 id="meeting-topic">載入中...</h2>
+
+        <h2>提交您的提案</h2>
+        <div class="input-group">
+            <input type="text" id="user-name" placeholder="您的名字 (選填，預設匿名)" value="組員A">
+            <input type="text" id="user-input-topic" placeholder="請再確認您對本次提案的標題" value="">
+        </div>
+        <div class="input-group">
+            <textarea id="proposal-input" placeholder="請輸入您對專題或主題的具體想法..."></textarea>
+        </div>
+        <button onclick="submitProposal()">提交提案</button>
+        <button onclick="getAnalysis(true)">即時分析所有提案 (調用 Gemini)</button>
+        <button class="reset-button" onclick="resetSession()">結束/重置會議</button>
+
+        <div class="section">
+            <h3>📝 已提交的提案</h3>
+            <ul id="proposal-list" class="proposal-list">
+                </ul>
+        </div>
+
+        <div class="section">
+            <h3>🤖 Gemini 專業分析與質疑</h3>
+            <pre id="analysis-output">請提交提案後點擊「即時分析」按鈕。</pre>
+        </div>
+    </div>
+
+    <script>
+        let proposalCount = 0;
+        let currentTopic = "載入中..."; // 儲存當前主題
+
+        /**
+         * 獲取並顯示當前會議主題
+         */
+        async function getTopic() {
+            try {
+                const response = await fetch('/get_current_topic');
+                const data = await response.json();
+                const topicElement = document.getElementById('meeting-topic');
+                
+                if (data.active) {
+                    currentTopic = data.topic;
+                    topicElement.innerHTML = `主題：<strong>${data.topic}</strong>`;
+                } else {
+                    topicElement.innerHTML = `<strong>無活躍會議</strong>`;
+                    alert('目前沒有活躍的腦力激盪會議，將導向發起頁面。');
+                    window.location.href = '/';
+                }
+            } catch (error) {
+                console.error('Error fetching topic:', error);
+                document.getElementById('meeting-topic').innerHTML = `主題：<strong>載入錯誤</strong>`;
+            }
+        }
+
+        /**
+         * 提交提案到後端
+         */
+        async function submitProposal() {
+            const userName = document.getElementById('user-name').value || '匿名組員';
+            const proposalText = document.getElementById('proposal-input').value.trim();
+            const userInputTopic = document.getElementById('user-input-topic').value.trim(); // 額外的標題欄位
+
+            if (!proposalText) {
+                alert('提案內容不能為空！');
+                return;
+            }
+            
+            // 將提案標題和內容合併，使提案更具體
+            const combinedProposal = userInputTopic ? `【${userInputTopic}】 ${proposalText}` : proposalText;
+
+            try {
+                const response = await fetch('/submit_proposal', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_name: userName,
+                        proposal_text: combinedProposal
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert('提案提交成功！');
+                    document.getElementById('proposal-input').value = ''; 
+                    document.getElementById('user-input-topic').value = '';
+                    getProposals(); 
+                } else {
+                    alert(`提交失敗: ${result.message}`);
+                }
+            } catch (error) {
+                console.error('Error submitting proposal:', error);
+                alert('網路錯誤，提案提交失敗。');
+            }
+        }
+
+        /**
+         * 從後端取得所有提案並更新列表
+         */
+        async function getProposals() {
+            try {
+                const response = await fetch('/get_proposals');
+                const data = await response.json();
+                const proposalList = document.getElementById('proposal-list');
+                proposalList.innerHTML = ''; 
+
+                if (data.proposals && data.proposals.length > 0) {
+                    data.proposals.forEach(p => {
+                        const li = document.createElement('li');
+                        li.textContent = `[${p.timestamp.substring(11, 16)}] ${p.user_name}: ${p.proposal_text}`;
+                        proposalList.appendChild(li);
+                    });
+                } else {
+                    proposalList.innerHTML = '<li>目前沒有任何提案。</li>';
+                }
+                
+                proposalCount = data.proposals.length;
+
+            } catch (error) {
+                console.error('Error fetching proposals:', error);
+            }
+        }
+
+        /**
+         * 調用 API 取得 Gemini 分析結果
+         */
+        async function getAnalysis(showLoading = true) {
+            const output = document.getElementById('analysis-output');
+            if (showLoading) {
+                output.textContent = '正在呼叫 Gemini-2.5-Flash 進行分析中，請稍候...';
+            }
+            
+            try {
+                const response = await fetch('/get_analysis');
+                const data = await response.json();
+
+                if (response.ok) {
+                    output.textContent = data.analysis;
+                } else {
+                    output.textContent = `分析失敗: ${data.analysis || '伺服器錯誤'}`;
+                }
+            } catch (error) {
+                console.error('Error fetching analysis:', error);
+                output.textContent = '網路錯誤，無法連線到分析伺服器。';
+            }
+        }
+
+        /**
+         * 重置會議 (清除資料庫中的提案並關閉會議)
+         */
+        async function resetSession() {
+            if (!confirm("確定要結束本次會議並清除所有提案嗎？此操作將導回發起頁面。")) {
+                return;
+            }
+            try {
+                const response = await fetch('/reset_session', {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                alert(result.message);
+                // 重置後導回發起頁面
+                window.location.href = '/'; 
+            } catch (error) {
+                alert('重置失敗。');
+            }
+        }
+        
+        // 頁面加載完成後，執行：
+        window.onload = () => {
+            getTopic(); // 載入主題
+            getProposals(); // 載入提案
+        };
+
+        // 每 5 秒自動更新提案列表
+        setInterval(getProposals, 5000); 
+
+    </script>
+</body>
+</html>

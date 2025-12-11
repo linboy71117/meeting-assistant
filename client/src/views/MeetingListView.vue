@@ -95,6 +95,16 @@ const loading = ref(false);
 const error = ref("");
 const showMenu = ref(false);
 
+const windowUrl = ref("");
+try {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    const url = tabs?.[0]?.url || "";
+    windowUrl.value = url;
+  });
+} catch (e) {
+  windowUrl.value = window.location.href;
+}
+
 function generateInviteCodeFromId(id: string): string {
   const base = id.replace(/-/g, "").slice(0, 10);
   const p1 = base.slice(0, 3);

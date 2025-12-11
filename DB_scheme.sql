@@ -3,12 +3,13 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- 用戶表
 CREATE TABLE IF NOT EXISTS users (
   id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  name         TEXT NOT NULL,
   email        TEXT UNIQUE,
+  google_id    VARCHAR(255) NOT NULL UNIQUE,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_google_id ON users(google_id);
 
 -- 會議表（invite_code 即為 Google Meet 代碼）
 CREATE TABLE IF NOT EXISTS meetings (

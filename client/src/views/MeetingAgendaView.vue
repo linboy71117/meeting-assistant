@@ -162,6 +162,12 @@
             <span v-if="brainstormingActive">🎉 腦力激盪開始了！點擊進入</span>
             <span v-else>創建腦力激盪</span>
           </button>
+          <button class="btn-run-mode" @click="startRunMode">
+            ▶ 開始會議 (Run Mode)
+          </button>
+
+          
+     
 
           <button class="secondary-btn" @click="startEdit">
             編輯流程
@@ -409,6 +415,31 @@ async function openGoogleMeet() {
   }
 }
 
+// run meeting 頁面
+function startRunMode() {
+  // 判斷是否在 Chrome Extension 環境下
+  if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getURL) {
+    // 1. 取得 Extension 內部的完整網址
+    // 格式會是：chrome-extension://<你的ID>/index.html#/meetings/xxx/run
+    const url = chrome.runtime.getURL(`index.html#/meetings/${meetingId}/run`);
+    
+    // 2. 開啟一個新視窗 (或是用 chrome.tabs.create)
+    // 這裡建議開一個 "popup" 類型的視窗，比較像獨立 App
+    chrome.windows.create({
+      url: url,
+      type: "popup", // 這會是一個沒有網址列的乾淨視窗
+      width: 500,
+      height: 700
+    });
+    
+    // 3. (選填) 關閉原本的 extension popup
+    // window.close(); 
+  } else {
+    // 一般網頁環境 (Localhost 開發時) 照舊
+    router.push(`/meetings/${meetingId}/run`);
+  }
+}
+
 // Brainstorming 頁面
 function startBrainstorm() {
   if (brainstormingActive.value) {
@@ -588,5 +619,20 @@ async function copyInviteCode() {
   0% { transform: scale(1); }
   50% { transform: scale(1.02); } /* 稍微放大 */
   100% { transform: scale(1); }
+}
+
+.btn-run-mode {
+  background: #10b981; /* 綠色，代表開始 */
+  color: white;
+  border: none;
+  padding: 7px 14px;
+  border-radius: 999px;
+  margin-right: 6px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-run-mode:hover {
+  background: #059669;
 }
 </style>

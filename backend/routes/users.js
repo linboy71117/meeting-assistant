@@ -2,79 +2,247 @@
 
 const express = require("express");
 const router = express.Router();
+const fs = require("fs");
+const path = require("path");
+const { OAuth2Client } = require("google-auth-library");
 const { getMeetingFromCache, setMeetingCache } = require("../utils/cacheManager");
 
+// 初始化 Google OAuth 2.0 客戶端
+let googleClient = null;
+
+function initGoogleClient() {
+  try {
+    const keyPath = process.env.GOOGLE_OAUTH_KEY_PATH || "./oauth/client_secret.json";
+    const fullPath = path.resolve(keyPath);
+    
+    if (!fs.existsSync(fullPath)) {
+      console.warn(`Google OAuth key file not found at ${fullPath}`);
+      return null;
+    }
+
+    const credentials = JSON.parse(fs.readFileSync(fullPath, "utf8"));
+    const webConfig = credentials.web;
+    
+    googleClient = new OAuth2Client(
+      webConfig.client_id,
+      webConfig.client_secret,
+      webConfig.redirect_uris[0]
+    );
+    
+    console.log("✓ Google OAuth client initialized");
+    return googleClient;
+  } catch (err) {
+    console.error("Error initializing Google OAuth client:", err);
+    return null;
+  }
+}
+
 module.exports = (pool, redis) => {
-  // 註冊新用戶
-  router.post("/register", async (req, res) => {
-    const { name, email } = req.body;
+  // 初始化 Google OAuth 客戶端
+  if (!googleClient) {
+    googleClient = initGoogleClient();
+  }
 
-    if (!name) {
-      return res.status(400).json({ error: "name 為必填欄位" });
+  // Google OAuth 驗證端點 (用於 ID Token 方式)
+  router.post("/auth/google", async (req, res) => {
+    const { idToken } = req.body;
+
+    if (!idToken) {
+      return res.status(400).json({ error: "idToken 為必填欄位" });
     }
 
-    if (!email) {
-      return res.status(400).json({ error: "email 為必填欄位" });
+    if (!googleClient) {
+      return res.status(500).json({ error: "Google OAuth client not initialized" });
     }
 
     try {
+      // 驗證 ID Token
+      const ticket = await googleClient.verifyIdToken({
+        idToken,
+        audience: undefined, // 從 credential 自動取得 client_id
+      });
+
+      const payload = ticket.getPayload();
+      const googleId = payload.sub; // Google User ID
+      const email = payload.email;
+      const name = payload.name;
+
       const client = await pool.connect();
       try {
-        // 檢查 email 是否已被使用
+        // 檢查用戶是否已存在
         const existing = await client.query(
-          "SELECT id FROM users WHERE email = $1",
-          [email]
+          "SELECT id, email FROM users WHERE google_id = $1",
+          [googleId]
         );
 
+        let userId;
         if (existing.rowCount > 0) {
-          return res.status(409).json({ error: "此 email 已被註冊" });
+          // 用戶已存在，直接登入
+          userId = existing.rows[0].id;
+        } else {
+          // 新用戶，自動註冊
+          const result = await client.query(
+            "INSERT INTO users (google_id, email) VALUES ($1, $2) RETURNING id, email, created_at",
+            [googleId, email]
+          );
+          userId = result.rows[0].id;
         }
 
-        // 建立新用戶
-        const result = await client.query(
-          "INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id, name, email, created_at",
-          [name, email]
+        // 查詢用戶資訊
+        const userResult = await client.query(
+          "SELECT id, email, created_at FROM users WHERE id = $1",
+          [userId]
         );
 
-        res.status(201).json(result.rows[0]);
+        res.json(userResult.rows[0]);
       } finally {
         client.release();
       }
     } catch (err) {
-      console.error("Error registering user:", err);
-      res.status(500).json({ error: "Internal server error" });
+      console.error("Error verifying Google token:", err);
+      res.status(401).json({ error: "Invalid token" });
     }
   });
 
-  // 用戶登入
-  router.post("/login", async (req, res) => {
-    const { email } = req.body;
+  // Google OAuth Callback 路由 (Server-side OAuth flow)
+  router.get("/auth/google/callback", async (req, res) => {
+    const { code, state, error } = req.query;
 
-    if (!email) {
-      return res.status(400).json({ error: "email 為必填欄位" });
+    // 檢查錯誤
+    if (error) {
+      return res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head><title>Google Login Error</title></head>
+        <body>
+          <script>
+            window.close();
+          </script>
+        </body>
+        </html>
+      `);
+    }
+
+    if (!code) {
+      return res.status(400).json({ error: "Missing authorization code" });
+    }
+
+    if (!googleClient) {
+      return res.status(500).json({ error: "Google OAuth client not initialized" });
     }
 
     try {
+      // 交換 authorization code 為 tokens
+      const { tokens } = await googleClient.getToken(code);
+      
+      // 驗證 ID Token
+      const ticket = await googleClient.verifyIdToken({
+        idToken: tokens.id_token,
+        audience: undefined,
+      });
+
+      const payload = ticket.getPayload();
+      const googleId = payload.sub;
+      const email = payload.email;
+
       const client = await pool.connect();
       try {
-        const result = await client.query(
-          "SELECT id, name, email, created_at FROM users WHERE email = $1",
-          [email]
+        // 檢查用戶是否已存在
+        const existing = await client.query(
+          "SELECT id, email FROM users WHERE google_id = $1",
+          [googleId]
         );
 
-        if (result.rowCount === 0) {
-          return res.status(404).json({ error: "用戶不存在，請先註冊" });
+        let userId;
+        if (existing.rowCount > 0) {
+          // 用戶已存在，直接登入
+          userId = existing.rows[0].id;
+        } else {
+          // 新用戶，自動註冊
+          const result = await client.query(
+            "INSERT INTO users (google_id, email) VALUES ($1, $2) RETURNING id, email, created_at",
+            [googleId, email]
+          );
+          userId = result.rows[0].id;
         }
 
-        res.json(result.rows[0]);
+        // 儲存用戶 ID 到 session 或回傳到前端
+        // 由於是 Extension，我們返回 HTML 頁面將用戶資訊通過 postMessage 回傳給 opener
+        const html = `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Google Login Success</title>
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 20px; text-align: center; }
+              .success { color: green; }
+              .loading { color: #666; }
+            </style>
+          </head>
+          <body>
+            <div class="loading">登入成功，正在返回...</div>
+            <script>
+              // 通過 postMessage 將用戶資訊傳送給 opener（親窗口）
+              const authData = {
+                success: true,
+                user_id: '${userId}',
+                email: '${email}'
+              };
+              
+              // 也儲存到 localStorage 作為備用
+              localStorage.setItem('meeting_user_id', '${userId}');
+              localStorage.setItem('meeting_user_email', '${email}');
+              
+              // 發送 postMessage 給 opener
+              if (window.opener) {
+                window.opener.postMessage(authData, '*');
+              }
+              
+              // 立即關閉窗口
+              window.close();
+            </script>
+          </body>
+          </html>
+        `;
+        res.send(html);
       } finally {
         client.release();
       }
     } catch (err) {
-      console.error("Error logging in user:", err);
-      res.status(500).json({ error: "Internal server error" });
+      console.error("Error in OAuth callback:", err);
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Google Login Error</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 20px; text-align: center; }
+            .error { color: red; }
+          </style>
+        </head>
+        <body>
+          <div class="error">登入失敗: ${err.message}</div>
+          <script>
+            const errorData = {
+              success: false,
+              error: '${err.message}'
+            };
+            
+            // 發送錯誤信息給 opener
+            if (window.opener) {
+              window.opener.postMessage(errorData, '*');
+            }
+            
+            // 立即關閉窗口
+            window.close();
+          </script>
+        </body>
+        </html>
+      `);
     }
   });
+
+
 
   // 使用inviteCode加入會議
   router.post("/:userId/join", async (req, res) => {
