@@ -83,6 +83,17 @@ function setupSocketIO(httpServer, redis) {
       socket.to(`meeting-${meetingId}`).emit("brainstorm-updated", ideas);
     });
 
+    socket.on("join-brainstorm", async (meetingId) => {
+      socket.join(`meeting-${meetingId}`);
+      console.log(`Socket ${socket.id} joined meeting-${meetingId}`);
+
+      // 從 Redis 撈暫存的會議資料（如果有的話）
+      const meetingData = await redis.get(`meeting:${meetingId}`);
+      if (meetingData) {
+        socket.emit("meeting-data", JSON.parse(meetingData));
+      }
+    });
+
     socket.on("disconnect", () => {
       console.log("Client disconnected:", socket.id);
     });

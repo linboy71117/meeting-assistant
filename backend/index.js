@@ -20,6 +20,7 @@ const { startSyncWorker } = require("./services/syncWorker");
 // 引入路由
 const usersRouter = require("./routes/users");
 const meetingsRouter = require("./routes/meetings");
+const brainstormingRouter = require("./routes/brainstorming");
 
 const app = express();
 const httpServer = createServer(app);
@@ -51,6 +52,7 @@ app.get("/health", (req, res) => {
 // 掛載路由
 app.use("/api/users", usersRouter(pool, redis));
 app.use("/api/meetings", meetingsRouter(pool, redis, io));
+app.use("/api/brainstorming", brainstormingRouter(pool, redis, io));
 
 /* ---------------- 啟動伺服器 ---------------- */
 
