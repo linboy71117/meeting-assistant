@@ -1,55 +1,68 @@
 <template>
   <div class="meeting-run-container">
-    <div v-if="!isPipActive" :class="['timer-bar', { 'is-overtime': isOvertime }]">
-       <div class="timer-controls">
-          <button class="btn-control pip" @click="togglePip">
-            {{ isPipActive ? '退出懸浮' : '📌 懸浮模式' }}
-          </button>
-       </div>
-    </div>
-
+    
     <Teleport :to="pipBody" v-if="isPipActive && pipBody">
       <div :class="['mini-timer-container', { 'is-overtime': isOvertime }]">
-        
-        <div class="mini-header">
-          <span class="mini-label">Current:</span>
+        <div class="mini-left">
+          <span class="mini-label">Current Stage</span>
           <span class="mini-title">{{ currentItem?.title }}</span>
         </div>
-
-        <div class="mini-time">
-          {{ formattedTime }}
-          <span v-if="isOvertime" class="mini-badge">OVERTIME</span>
-        </div>
-
-        <div class="mini-controls" v-if="isHost">
-           <button @click="handleNextItem">Next</button>
-           <button @click="togglePip">Close</button>
+        <div class="mini-right">
+          <div class="mini-time">{{ formattedTime }}</div>
+          <div class="mini-controls" v-if="isHost">
+             <button @click="handleNextItem">Next</button>
+             <button @click="togglePip" class="btn-close-pip">Exit PiP</button>
+          </div>
         </div>
       </div>
     </Teleport>
     
-    <div :class="['timer-bar', { 'is-overtime': isOvertime }]">
+    <div v-if="!isPipActive" :class="['timer-bar', { 'is-overtime': isOvertime }]">
+      
       <div class="timer-info">
-        <div class="current-label">正在進行 (Current Stage)</div>
+        <div class="status-badge" v-if="isRunning">Running</div>
+        <div class="status-badge paused" v-else>Paused</div>
         <div class="current-title">{{ currentItem?.title || '準備開始' }}</div>
+        <div class="next-hint" v-if="nextItem">Next: {{ nextItem.title }}</div>
       </div>
 
-      <div class="timer-display">
-        <span class="time-text">{{ formattedTime }}</span>
-        <span v-if="isOvertime" class="overtime-badge">OVERTIME (延長)</span>
-      </div>
+      <div class="timer-right-panel">
+        <div class="timer-display">
+          <span class="time-text">{{ formattedTime }}</span>
+          <span v-if="isOvertime" class="overtime-badge">OVERTIME</span>
+        </div>
 
-      <div v-if="isHost" class="timer-controls">
-        <button v-if="!isRunning" class="btn-control start" @click="startTimer">
-          ▶ 開始
-        </button>
-        <button v-else class="btn-control pause" @click="pauseTimer">
-          ⏸ 暫停
-        </button>
+        <div class="timer-controls">
+          
+          <button class="btn-icon-glass" @click="togglePip" title="懸浮視窗">
+            📌
+          </button>
 
-        <button class="btn-control next" @click="handleNextItem">
-          {{ isLastItem ? '結束會議' : '下一個環節 →' }}
-        </button>
+          <button 
+            class="btn-icon-glass magic-btn" 
+            :class="{ 'active': brainstormingActive }"
+            @click="startBrainstorm" 
+            title="腦力激盪"
+          >
+            <span v-if="brainstormingActive" class="pulse-dot"></span>
+            ✨ {{ brainstormingActive ? '進入腦力激盪' : '腦力激盪' }}
+          </button>
+
+          <div class="divider-vertical" v-if="isHost"></div>
+
+          <template v-if="isHost">
+            <button v-if="!isRunning" class="btn-control start" @click="startTimer">
+              ▶ 開始
+            </button>
+            <button v-else class="btn-control pause" @click="pauseTimer">
+              ⏸ 暫停
+            </button>
+
+            <button class="btn-control next" @click="handleNextItem">
+              {{ isLastItem ? '結束' : '下一項' }} →
+            </button>
+          </template>
+        </div>
       </div>
     </div>
 
@@ -57,21 +70,31 @@
       <div 
         v-for="(item, index) in agenda" 
         :key="index"
-        :class="['agenda-item', { 'active': currentIndex === index, 'past': currentIndex > index }]"
+        :class="['agenda-item', { 
+          'active': currentIndex === index, 
+          'past': currentIndex > index 
+        }]"
         @click="handleJumpTo(index)"
       >
-        <div class="status-icon">
-          <span v-if="currentIndex === index && isRunning" class="spinner"></span>
-          <span v-else-if="currentIndex > index">✓</span>
+        <div class="status-indicator"></div>
+
+        <div class="item-index">
+          <span v-if="currentIndex === index && isRunning" class="playing-icon">
+            <span></span><span></span><span></span>
+          </span>
+          <span v-else-if="currentIndex > index" class="check-icon">✓</span>
           <span v-else>{{ index + 1 }}</span>
         </div>
 
         <div class="item-content">
-          <div class="item-header">
+          <div class="item-row-top">
             <span class="item-title">{{ item.title }}</span>
-            <span class="item-duration">預計: {{ item.time }} min</span>
+            <span class="item-time-pill">{{ item.time }} min</span>
           </div>
-          <div class="item-owner" v-if="item.owner">負責人: {{ item.owner }}</div>
+          <div class="item-row-btm" v-if="item.owner || item.note">
+            <span class="item-owner" v-if="item.owner">👤 {{ item.owner }}</span>
+            <span class="item-note" v-if="item.note">📝 {{ item.note }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -81,8 +104,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { useRoute } from 'vue-router';
-import socket from '../config/socket'; // 確保路徑正確
+import { useRoute, useRouter } from 'vue-router';
+import socket from '../config/socket'; 
 
 // 定義資料結構
 interface AgendaItem {
@@ -94,6 +117,7 @@ interface AgendaItem {
 }
 
 const route = useRoute();
+const router = useRouter();
 const meetingId = route.params.id as string;
 const API_BASE = (import.meta as any).env?.VITE_BACKEND_URL || "http://localhost:3000";
 
@@ -102,11 +126,13 @@ const isHost = ref(false);
 const agenda = ref<AgendaItem[]>([]);
 const currentIndex = ref(0);
 const isRunning = ref(false);
+const brainstormingActive = ref(false); // 新增：腦力激盪狀態
 
 const timeLeft = ref(0);
 const timerInterval = ref<any>(null);
 
 const currentItem = computed(() => agenda.value[currentIndex.value]);
+const nextItem = computed(() => agenda.value[currentIndex.value + 1]);
 const isLastItem = computed(() => currentIndex.value >= agenda.value.length - 1);
 const isOvertime = computed(() => timeLeft.value < 0);
 
@@ -129,24 +155,20 @@ function parseDurationToSeconds(timeStr: string): number {
   return 300;
 }
 
-// === 獨立的監聽函式 ===
+// === Timer Sync Logic ===
 const handleTimerSync = (syncData: any) => {
-  // 如果我是 Host，且計時器正在跑，代表我是權威，不聽別人的
   if (isHost.value && timerInterval.value) return;
 
-  // 但如果我是 Host 且沒在跑 (剛重整)，我要恢復狀態
   if (currentIndex.value !== syncData.currentIndex) {
     currentIndex.value = syncData.currentIndex;
   }
   
   timeLeft.value = syncData.timeLeft;
   
-  // 恢復計時器狀態
   if (syncData.isRunning && !timerInterval.value) {
-    // 呼叫 startTimer(false) -> 不要廣播，純粹啟動本地計時器
     startTimer(false);
   } else if (!syncData.isRunning) {
-    pauseTimer(false); // 不要廣播，純粹暫停本地
+    pauseTimer(false);
     isRunning.value = false;
   }
 };
@@ -156,7 +178,7 @@ onMounted(async () => {
   try {
     const userId = localStorage.getItem("meeting_user_id");
     
-    // 1. API 抓資料
+    // 1. 抓取會議資料
     const res = await fetch(`${API_BASE}/api/meetings/${meetingId}`);
     const data = await res.json();
 
@@ -174,22 +196,33 @@ onMounted(async () => {
       }
     }
     
-    // 3. ⭐⭐ 關鍵修正：初始化時，只設定時間，不發送廣播 (false)
-    // 這樣就不會把後端存的「進行中時間」覆蓋掉了
+    // 3. 初始化計時器
     resetTimerForCurrentIndex(false);
 
-    // 4. Socket 連線
+    // 4. 檢查是否有進行中的腦力激盪 (新增邏輯)
+    try {
+      const resActive = await fetch(`${API_BASE}/api/brainstorming/${meetingId}/active`);
+      if (resActive.ok) {
+        brainstormingActive.value = true;
+      }
+    } catch(e) { console.warn("Brainstorm check skipped"); }
+
+    // 5. Socket 連線
     if (!socket.connected) {
       socket.connect();
     }
     
     socket.off('timer-sync', handleTimerSync);
     socket.on('timer-sync', handleTimerSync);
+    
+    // 監聽腦力激盪開啟事件 (新增邏輯)
+    socket.on("new-brainstorming-created", () => {
+       brainstormingActive.value = true;
+    });
 
     socket.emit('join-meeting', meetingId);
 
-    // 5. Host 延遲廣播初始狀態
-    // 只有當確定後端沒有正在跑的狀態 (isRunning 為 false) 時，才需要廣播初始值
+    // Host 初始廣播
     if (isHost.value) {
       setTimeout(() => {
         if (!isRunning.value) {
@@ -209,31 +242,25 @@ onUnmounted(() => {
     timerInterval.value = null;
   }
   socket.off('timer-sync', handleTimerSync);
+  socket.off('new-brainstorming-created'); // 記得移除監聽
 
   if (socket.connected) {
-    socket.disconnect();
-    console.log("Socket disconnected on unmount");
+    // 這裡不一定要 disconnect，視你的全域 socket 策略而定
+    // socket.disconnect();
   }
 });
 
-// === Timer 操作 (Host 專用) ===
-
-// 🟢 修改 1：接收 shouldEmit 參數
+// === Timer Controls ===
 function startTimer(shouldEmit = true) {
   if (isRunning.value && timerInterval.value) return;
-  
   isRunning.value = true;
-  
-  // 只有在 shouldEmit 為 true 時才廣播
   if (shouldEmit) emitSync();
-
   timerInterval.value = setInterval(() => {
     timeLeft.value--;
-    emitSync(); // 這裡每秒廣播是為了讓 Client 同步
+    emitSync();
   }, 1000);
 }
 
-// 🟢 修改 2：接收 shouldEmit 參數
 function pauseTimer(shouldEmit = true) {
   isRunning.value = false;
   if (timerInterval.value) {
@@ -243,21 +270,16 @@ function pauseTimer(shouldEmit = true) {
   if (shouldEmit) emitSync();
 }
 
-// 🟢 修改 3：接收 shouldEmit 參數
 function resetTimerForCurrentIndex(shouldEmit = true) {
   const item = agenda.value[currentIndex.value];
   if (!item) return;
-  
   timeLeft.value = parseDurationToSeconds(item.time);
-  
-  // 傳遞參數給 pauseTimer
   pauseTimer(shouldEmit);
 }
 
 function handleNextItem() {
   if (currentIndex.value < agenda.value.length - 1) {
     currentIndex.value++;
-    // 切換下一項時，當然要廣播 (true)
     resetTimerForCurrentIndex(true);
     emitSync();
   } else {
@@ -287,7 +309,18 @@ function emitSync() {
   });
 }
 
-// === PiP (懸浮視窗) 相關 (保持不變) ===
+// === Brainstorming Logic (整合進來) ===
+function startBrainstorm() {
+  if (brainstormingActive.value) {
+    // 如果已有活動，進入提案頁
+    router.push(`/meetings/${meetingId}/brainstorm/proposal`);
+  } else {
+    // 否則進入創建頁
+    router.push(`/meetings/${meetingId}/brainstorm`);
+  }
+}
+
+// === PiP Logic ===
 const isPipActive = ref(false);
 const pipBody = ref<HTMLElement | null>(null); 
 let pipWindowRef: Window | null = null; 
@@ -304,9 +337,11 @@ async function togglePip() {
   try {
     // @ts-ignore
     const pipWindow = await window.documentPictureInPicture.requestWindow({
-      width: 300, height: 150,
+      width: 320, height: 120,
     });
     pipWindowRef = pipWindow;
+    
+    // 複製樣式
     [...document.styleSheets].forEach((styleSheet) => {
       try {
         const cssRules = [...styleSheet.cssRules].map((rule) => rule.cssText).join('');
@@ -315,6 +350,7 @@ async function togglePip() {
         pipWindow.document.head.appendChild(style);
       } catch (e) {}
     });
+
     pipBody.value = pipWindow.document.body;
     isPipActive.value = true;
     pipWindow.addEventListener("pagehide", () => {
@@ -329,289 +365,426 @@ async function togglePip() {
 </script>
 
 <style scoped>
-
+/* 全域設定 */
 .meeting-run-container {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: #f8f9fa;
-  font-family: system-ui, -apple-system, sans-serif;
+  background: #f0f2f5; /* 更柔和的灰底 */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* =========================================
-   1. 頂部計時器欄位 (Timer Bar)
+   1. Timer Bar (現代化風格)
    ========================================= */
 .timer-bar {
-  background: #2c3e50; /* 預設深色背景 */
+  /* 漸層背景 */
+  background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
   color: white;
-  padding: 16px 24px;
+  padding: 16px 20px;
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  
-  /* 固定在頂部 */
+  align-items: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   position: sticky;
   top: 0;
   z-index: 100;
-  
-  /* 背景色切換動畫 */
-  transition: background-color 0.5s ease;
+  transition: background 0.3s ease;
 }
 
-/* 延長賽模式 (Overtime) - 變紅色 */
 .timer-bar.is-overtime {
-  background: #c0392b; 
+  background: linear-gradient(135deg, #cb2d3e 0%, #ef473a 100%);
 }
 
-/* 左側標題資訊 */
+/* 左側標題區 */
 .timer-info {
   display: flex;
   flex-direction: column;
+  gap: 4px;
 }
 
-.current-label {
-  font-size: 12px;
-  opacity: 0.8;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+.status-badge {
+  font-size: 10px;
+  background: rgba(46, 204, 113, 0.2);
+  color: #2ecc71;
+  padding: 2px 6px;
+  border-radius: 4px;
+  width: fit-content;
+  border: 1px solid rgba(46, 204, 113, 0.4);
+  font-weight: bold;
+  letter-spacing: 0.5px;
+}
+
+.status-badge.paused {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ddd;
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 .current-title {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
-  margin-top: 4px;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px; /* 避免在窄視窗爆開 */
 }
 
-/* 中間時間顯示 */
-.timer-display {
+.next-hint {
+  font-size: 11px;
+  opacity: 0.7;
+  max-width: 160px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 右側時間與控制區 */
+.timer-right-panel {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
+  gap: 8px;
+}
+
+.timer-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .time-text {
-  font-family: 'Courier New', monospace;
-  font-size: 42px;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 36px;
   font-weight: 700;
   line-height: 1;
+  letter-spacing: -1px;
 }
 
 .overtime-badge {
-  font-size: 12px;
-  background: rgba(0, 0, 0, 0.2);
-  padding: 2px 6px;
-  border-radius: 4px;
-  margin-top: 4px;
-  font-weight: bold;
+  font-size: 10px;
+  background: white;
+  color: #c0392b;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-weight: 800;
 }
 
-/* =========================================
-   Host 控制按鈕區 (Controls)
-   ========================================= */
+/* 控制按鈕群組 */
 .timer-controls {
   display: flex;
-  gap: 12px;
-  margin-left: 24px;
-  padding-left: 24px;
-  border-left: 1px solid rgba(255, 255, 255, 0.2);
+  gap: 8px;
+  align-items: center;
 }
 
+.divider-vertical {
+  width: 1px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.2);
+  margin: 0 4px;
+}
+
+/* 通用按鈕樣式 */
 .btn-control {
   border: none;
-  padding: 10px 20px;
-  border-radius: 8px;
-  font-size: 14px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.btn-control:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.btn-control:active {
+  transform: translateY(0);
 }
 
 .btn-control.start {
-  background: #27ae60;
+  background: #00b894;
   color: white;
 }
 
 .btn-control.pause {
-  background: #f1c40f;
-  color: #2c3e50;
+  background: #fdcb6e;
+  color: #2d3436;
 }
 
 .btn-control.next {
-  background: white;
-  color: #2c3e50;
+  background: rgba(255, 255, 255, 0.9);
+  color: #2d3436;
 }
 
-/* 當處於延長賽時，"下一個"按鈕的樣式變化 */
-.timer-bar.is-overtime .btn-control.next {
-  background: white;
-  color: #c0392b;
-  font-weight: 800;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+/* 玻璃質感圖示按鈕 */
+.btn-icon-glass {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
 }
+
+.btn-icon-glass:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* 腦力激盪按鈕 (Magic Button) */
+.magic-btn {
+  width: auto; /* 不像 icon 是圓的 */
+  padding: 0 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.magic-btn.active {
+  background: #a29bfe; /* 啟動時變成紫色 */
+  color: #2d3436;
+  border-color: #a29bfe;
+  box-shadow: 0 0 10px rgba(162, 155, 254, 0.6);
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  background: #d63031;
+  border-radius: 50%;
+  display: inline-block;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.5); opacity: 0.5; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
 
 /* =========================================
-   2. 下方議程列表 (Agenda List)
+   2. Agenda List (卡片式列表)
    ========================================= */
 .agenda-list-container {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
-  max-width: 800px;
-  margin: 0 auto;
+  padding: 16px;
   width: 100%;
+  margin: 0;
+  box-sizing: border-box;
 }
 
 .agenda-item {
   background: white;
   border-radius: 12px;
-  padding: 16px;
-  margin-bottom: 12px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
   display: flex;
   align-items: center;
-  gap: 16px;
-  border: 2px solid transparent;
-  transition: all 0.2s;
-  cursor: default;
+  gap: 14px;
+  cursor: pointer;
   position: relative;
+  overflow: hidden;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+  border: 1px solid transparent;
 }
 
-/* 當前進行中的項目 (Active) */
+.agenda-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+/* 狀態指示條 (左側線條) */
+.status-indicator {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #e0e0e0;
+}
+
+/* 進行中 (Active) */
 .agenda-item.active {
-  border-color: #0b57d0;
-  box-shadow: 0 4px 12px rgba(11, 87, 208, 0.15);
-  background: #f8fbff;
+  background: #fdfdfd;
+  border-color: #a0c4ff;
 }
 
-/* 已經結束的項目 (Past) */
+.agenda-item.active .status-indicator {
+  background: #0b57d0;
+  width: 6px;
+}
+
+/* 過去 (Past) */
 .agenda-item.past {
   opacity: 0.6;
-  background: #f3f3f3;
+  background: #f9f9f9;
 }
 
-/* 狀態圓圈圖示 */
-.status-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 2px solid #ddd;
+.agenda-item.past .status-indicator {
+  background: #bbb;
+}
+
+/* 序號/狀態 */
+.item-index {
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: bold;
-  color: #888;
-  flex-shrink: 0;
+  font-weight: 700;
+  color: #999;
+  font-size: 14px;
 }
 
-.agenda-item.active .status-icon {
-  border-color: #0b57d0;
+.agenda-item.active .item-index {
   color: #0b57d0;
 }
 
-/* 議程內容文字 */
-.item-content {
-  flex: 1;
+.check-icon {
+  color: #27ae60;
+  font-size: 16px;
 }
 
-.item-header {
+/* 播放動畫 */
+.playing-icon span {
+  display: inline-block;
+  width: 3px;
+  height: 12px;
+  background-color: #0b57d0;
+  margin: 0 1px;
+  animation: equalize 1s infinite;
+}
+.playing-icon span:nth-child(2) { animation-delay: 0.2s; }
+.playing-icon span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes equalize {
+  0%, 100% { height: 6px; }
+  50% { height: 14px; }
+}
+
+/* 內容區 */
+.item-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.item-row-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
 .item-title {
+  font-size: 15px;
   font-weight: 600;
-  font-size: 16px;
+  color: #2d3436;
 }
 
-.item-duration {
+.item-time-pill {
+  font-size: 11px;
+  background: #f1f2f6;
+  color: #636e72;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.item-row-btm {
+  display: flex;
+  gap: 10px;
   font-size: 12px;
-  color: #666;
-  background: #eee;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-
-.item-owner {
-  font-size: 13px;
-  color: #666;
-  margin-top: 4px;
+  color: #636e72;
 }
 
 /* =========================================
-   動畫 (Animations)
+   3. PiP Window (深色簡約)
    ========================================= */
-.spinner {
-  width: 12px;
-  height: 12px;
-  border: 2px solid #0b57d0;
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-.btn-control.pip {
-  background: #8e44ad;
-  color: white;
-}
-
-/* === 懸浮視窗專用樣式 === */
 .mini-timer-container {
   width: 100%;
   height: 100%;
-  
-  /* 改用深色實心背景，比較好讀，不要用半透明了，因為透不出東西 */
-  background: #222; 
-  border: 1px solid #444; /* 加個邊框更有質感 */
-  
+  background: #1e1e1e;
   color: white;
   display: flex;
-  
-  /* 改成橫向排列，省空間 */
-  flex-direction: row; 
-  align-items: center;
   justify-content: space-between;
-  
+  align-items: center;
   padding: 0 16px;
   box-sizing: border-box;
+  font-family: system-ui;
 }
 
-/* 讓時間最大，標題變小 */
-.mini-info {
-  text-align: left;
+.mini-timer-container.is-overtime {
+  border-bottom: 4px solid #c0392b;
+}
+
+.mini-left {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mini-label {
+  font-size: 10px;
+  color: #888;
+  text-transform: uppercase;
 }
 
 .mini-title {
   font-size: 14px;
-  max-width: 120px; /* 限制寬度 */
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: #ccc;
+  max-width: 120px;
+}
+
+.mini-right {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
 }
 
 .mini-time {
-  font-size: 32px;
-  margin: 0 16px;
-  color: #fff;
+  font-size: 28px;
+  font-weight: 700;
+  font-family: monospace;
 }
 
 .mini-controls {
-  margin-top: 0; /* 拿掉上邊距 */
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
 }
 
 .mini-controls button {
-  background: rgba(255,255,255,0.2);
-  border: 1px solid rgba(255,255,255,0.4);
-  color: white;
-  padding: 4px 8px;
-  border-radius: 4px;
+  background: #333;
+  color: #ccc;
+  border: 1px solid #555;
+  font-size: 10px;
+  padding: 2px 6px;
   cursor: pointer;
-  font-size: 12px;
+  border-radius: 4px;
+}
+
+.mini-controls button:hover {
+  background: #444;
+  color: white;
 }
 </style>
