@@ -270,8 +270,8 @@ onMounted(loadMeetings);
 /* Container Layout */
 .popup-container {
   width: 100%;
-  max-width: 100% !important;
-  padding: 14px;
+  max-width: 350px !important;
+  /* padding: 14px; */
   margin: 0 auto;
   font-family: -apple-system, BlinkMacSystemFont, system-ui;
   padding-bottom: 80px;

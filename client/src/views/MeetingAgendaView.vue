@@ -19,37 +19,7 @@
 
       <!-- ========== 編輯模式 ========== -->
       <div v-if="isEditing" class="edit-panel">
-
-        <h2 class="title">編輯會議</h2>
-
-        <!-- 名稱 -->
-        <label class="field">
-          <span class="field-label">會議名稱</span>
-          <input v-model="editable.title" class="text-input" />
-        </label>
-
-        <!-- 日期 -->
-        <label class="field">
-          <span class="field-label">日期</span>
-          <input type="datetime-local" v-model="editable.date" class="text-input" />
-        </label>
-
-        <!-- 描述 -->
-        <label class="field">
-          <span class="field-label">說明</span>
-          <textarea v-model="editable.description" class="textarea-input" rows="2" />
-        </label>
-
-        <!-- 邀請碼 -->
-        <div class="field">
-          <div class="field-label">邀請碼</div>
-          <div class="invite-row">
-            <span class="code-pill">{{ editable.inviteCode }}</span>
-            <button class="small-btn" @click="copyInviteCode">複製</button>
-          </div>
-        </div>
-
-        <!-- Agenda 編輯區 -->
+        
         <h3 class="section-title">會議流程（Agenda）</h3>
 
             <div class="form-group">
@@ -73,7 +43,9 @@
             <div class="form-group full">
               <label>Google Meet 連結</label>
               <div class="link-display">
-                {{ editable.meetUrl || "尚未建立 (儲存後可建立)" }}
+                <a :href="`https://meet.google.com/${meeting.inviteCode}`" target="_blank" rel="noopener noreferrer" class="meet-link">
+                  {{`https://meet.google.com/${meeting.inviteCode}`}}
+                </a>
               </div>
             </div>
         
@@ -137,18 +109,13 @@
         <p class="meta">
           邀請碼：<span class="code-pill">{{ meeting.inviteCode }}</span>
         </p>
-        <p class="meta" v-if="meeting.inviteCode">
+        <p class="meta">
+          Google Meet 連結：
           <a :href="`https://meet.google.com/${meeting.inviteCode}`" target="_blank" rel="noopener noreferrer" class="meet-link">
-            📞 Google Meet
+            {{`https://meet.google.com/${meeting.inviteCode}`}}
           </a>
         </p>
         <p class="desc" v-if="meeting.description">{{ meeting.description }}</p>
-        
-        <div class="meet-link-row">
-           <span class="meet-label">Google Meet:</span>
-           <a v-if="meeting.meetUrl" :href="meeting.meetUrl" target="_blank" class="meet-link">{{ meeting.meetUrl }}</a>
-           <span v-else class="text-gray">尚未建立</span>
-        </div>
 
         <h3 class="section-title">會議流程</h3>
 
@@ -202,12 +169,12 @@
             <span v-else>🧠 創建腦力激盪</span>
           </button>
 
-          <button class="btn-run-mode" @click="startRunMode">
-            ▶ 開始會議 (Run Mode)
-          </button>
-
           <button class="secondary-btn" @click="startEdit">
             ✏️ 編輯流程
+          </button>
+
+          <button class="btn-run-mode" @click="startRunMode">
+            ▶ 開始會議 (Run Mode)
           </button>
         </div>
 
@@ -556,6 +523,7 @@ async function copyInviteCode() {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   box-sizing: border-box;
   padding-bottom: 80px; /* 為了底部按鈕留白 */
+  align-items: center;
 }
 
 /* 返回按鈕 */
@@ -626,6 +594,7 @@ async function copyInviteCode() {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  margin-bottom: 4px;
 }
 
 .form-group.full { grid-column: 1 / -1; }
@@ -717,11 +686,20 @@ async function copyInviteCode() {
 
 /* 底部操作區 */
 .bottom-actions-bar {
-  position: fixed; bottom: 0; left: 0; width: 100%;
-  background: white; padding: 12px 20px;
-  display: flex; justify-content: flex-end; gap: 12px;
-  box-shadow: 0 -4px 12px rgba(0,0,0,0.05);
+  position: fixed;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 32px);
+  max-width: 330px;
+  background: white;
+  padding: 12px 20px;
+  display: flex;
+  justify-content: center; /* 置中按鈕 */
+  gap: 12px;
+  box-shadow: 0 -4px 12px rgba(0,0,0,0.06);
   z-index: 10;
+  border-radius: 12px;
 }
 
 .btn-save {

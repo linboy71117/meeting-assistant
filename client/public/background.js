@@ -28,8 +28,8 @@ chrome.action.onClicked.addListener(async () => {
     chrome.windows.create({
       url: targetUrl,
       type: "popup", // "popup" 類型沒有網址列和書籤列，看起來像獨立 App
-      width: 450,    // 設定你想要的寬度
-      height: 700,   // 設定你想要的高度
+      width: 360,    // 設定你想要的寬度
+      height: 660,   // 設定你想要的高度
       focused: true
     });
   }
