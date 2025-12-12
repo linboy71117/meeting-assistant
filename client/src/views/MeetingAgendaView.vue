@@ -1,7 +1,8 @@
 <template>
   <div class="page">
 
-    <button class="back-btn" @click="$router.push('/meetings')">
+    <!-- 返回列表 -->
+    <button class="back-btn" v-if="!isEditing" @click="$router.push('/meetings')">
       ← 回到會議列表
     </button>
 
@@ -16,20 +17,40 @@
 
     <div v-else>
 
-      <div v-if="isEditing" class="edit-container">
+      <!-- ========== 編輯模式 ========== -->
+      <div v-if="isEditing" class="edit-panel">
 
-        <div class="edit-header">
-          <h2 class="page-title">編輯會議</h2>
+        <h2 class="title">編輯會議</h2>
+
+        <!-- 名稱 -->
+        <label class="field">
+          <span class="field-label">會議名稱</span>
+          <input v-model="editable.title" class="text-input" />
+        </label>
+
+        <!-- 日期 -->
+        <label class="field">
+          <span class="field-label">日期</span>
+          <input type="datetime-local" v-model="editable.date" class="text-input" />
+        </label>
+
+        <!-- 描述 -->
+        <label class="field">
+          <span class="field-label">說明</span>
+          <textarea v-model="editable.description" class="textarea-input" rows="2" />
+        </label>
+
+        <!-- 邀請碼 -->
+        <div class="field">
+          <div class="field-label">邀請碼</div>
+          <div class="invite-row">
+            <span class="code-pill">{{ editable.inviteCode }}</span>
+            <button class="small-btn" @click="copyInviteCode">複製</button>
+          </div>
         </div>
 
-        <div class="form-card">
-          <h3 class="card-subtitle">基本資訊</h3>
-          
-          <div class="form-grid">
-            <div class="form-group full">
-              <label>會議名稱</label>
-              <input v-model="editable.title" class="input-field" placeholder="例如：產品週會" />
-            </div>
+        <!-- Agenda 編輯區 -->
+        <h3 class="section-title">會議流程（Agenda）</h3>
 
             <div class="form-group">
               <label>日期</label>
@@ -113,11 +134,15 @@
 
         <h2 class="title">{{ meeting.title }}</h2>
 
-        <div class="meta-row">
-          <span class="meta-tag">📅 {{ meeting.date || "未設定" }}</span>
-          <span class="meta-tag">🔑 {{ meeting.inviteCode }}</span>
-        </div>
-        
+        <p class="meta">日期：{{ meeting.date || "未設定" }}</p>
+        <p class="meta">
+          邀請碼：<span class="code-pill">{{ meeting.inviteCode }}</span>
+        </p>
+        <p class="meta" v-if="meeting.inviteCode">
+          <a :href="`https://meet.google.com/${meeting.inviteCode}`" target="_blank" rel="noopener noreferrer" class="meet-link">
+            📞 Google Meet
+          </a>
+        </p>
         <p class="desc" v-if="meeting.description">{{ meeting.description }}</p>
         
         <div class="meet-link-row">
@@ -217,17 +242,37 @@ const brainstormingActive = ref(false);
 // Edit State
 const editable = ref<any>({});
 const editableAgenda = ref<any[]>([]);
+const isEditing = ref(
+  route.query.edit === "1" || route.query.new === "1"
+);
+const isNewMeeting = ref(route.query.new === "1");
 
-// --- Helpers ---
-function generateInviteCodeFromId(id: string): string {
-  const base = id.replace(/-/g, "").slice(0, 10);
-  return [base.slice(0, 3), base.slice(3, 7), base.slice(7, 10)].filter(Boolean).join("-");
+const loadingMeet = ref(false);
+
+// Helpers
+/**
+ * 將本地日期轉換為不考慮時區偏移的 ISO 字符串
+ * 例：本地時間 2025-12-10 14:00 → "2025-12-10T14:00:00Z"（保持本地時間值）
+ */
+function toLocalISOString(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}Z`;
 }
 
 function normalizeDate(value: any): string {
   if (!value) return "";
   if (typeof value === "string") return value.slice(0, 10);
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (value instanceof Date) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
   return "";
 }
 
@@ -235,12 +280,29 @@ const agendaToShow = computed(() => meeting.value?.agenda ?? []);
 
 function resetEditableFromMeeting() {
   if (!meeting.value) return;
+  
+  // 將日期轉換為 datetime-local 格式 (YYYY-MM-DDTHH:mm:ss)
+  // 使用本地時間，不進行時區轉換
+  let formattedDate = "";
+  if (meeting.value.date) {
+    const d = new Date(meeting.value.date);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    const seconds = String(d.getSeconds()).padStart(2, '0');
+    formattedDate = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+  }
+  
+  // 根據 inviteCode 生成 Google Meet 連結
+  const inviteCode = meeting.value.inviteCode ?? "";
+  
   editable.value = {
     title: meeting.value.title ?? "",
-    date: normalizeDate(meeting.value.date),
+    date: formattedDate,
     description: meeting.value.description ?? "",
-    inviteCode: meeting.value.inviteCode || generateInviteCodeFromId(meetingId),
-    meetUrl: meeting.value.meetUrl ?? "",
+    inviteCode: inviteCode,
   };
   editableAgenda.value = (meeting.value.agenda || []).map((a: any, idx: number) => ({
     orderIndex: a.orderIndex ?? idx,
@@ -346,23 +408,38 @@ function removeAgenda(i: number) {
 
 // --- Actions ---
 async function saveMeeting() {
-  const payload = {
-    id: meetingId,
-    inviteCode: editable.value.inviteCode,
-    title: editable.value.title || "未命名會議",
-    date: editable.value.date || null,
-    description: editable.value.description || "",
-    summary: summary.value,
-    agenda: editableAgenda.value.map((item, index) => ({
-      orderIndex: index,
-      time: item.time,
-      title: item.title,
-      owner: item.owner,
-      note: item.note,
-    })),
-  };
+  if (!editable.value) return;
+  
+  // 日期必填
+  if (!editable.value.date) {
+    alert("請填寫會議日期");
+    return;
+  }
+
+  const agendaData = editableAgenda.value.map((item, index) => ({
+    orderIndex: index,
+    time: item.time || "",
+    title: item.title || "",
+    owner: item.owner || "",
+    note: item.note || "",
+  }));
 
   try {
+    // 從 localStorage 取得 userId
+    const userId = localStorage.getItem('meeting_user_id');
+    
+    // datetime-local 值已經是本地時間，直接發送給後端
+    // 後端會以此本地時間作為基準（不進行時區轉換）
+    const payload = {
+      id: meetingId,
+      title: editable.value.title || "未命名會議",
+      date: editable.value.date,
+      description: editable.value.description || "",
+      summary: summary.value || "",
+      agenda: agendaData,
+      userId: userId, // 傳遞 userId 以便重新生成 Google Meet
+    };
+
     const res = await fetch(`${API_BASE}/api/meetings/${meetingId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -403,19 +480,33 @@ async function createNewGoogleMeet() {
 async function openGoogleMeet() {
   loadingMeet.value = true;
   try {
-    let url = meeting.value?.meetUrl || editable.value?.meetUrl || "";
-    if (!url) {
-      const newUrl = await createNewGoogleMeet();
-      if (!newUrl) {
-        alert("無法建立 Google Meet！");
-        return;
-      }
-      if (!editable.value) editable.value = {}; 
-      editable.value.meetUrl = newUrl;
-      await saveMeeting();
-      url = newUrl;
+    // 根據 inviteCode 生成 Google Meet 連結
+    const inviteCode = editable.value?.inviteCode || meeting.value?.inviteCode || "";
+    
+    if (inviteCode) {
+      // 直接使用 inviteCode 打開 Google Meet
+      const meetUrl = `https://meet.google.com/${inviteCode}`;
+      window.open(meetUrl, "_blank");
+      return;
     }
-    window.open(url, "_blank");
+
+    // 如果沒有 inviteCode，創建新的 Google Meet
+    const newUrl = await createNewGoogleMeet();
+    if (!newUrl) {
+      alert("無法建立 Google Meet！");
+      return;
+    }
+
+    if (!editable.value) {
+      editable.value = {
+        title: meeting.value?.title ?? "",
+        date: normalizeDate(meeting.value?.date),
+        description: meeting.value?.description ?? "",
+        inviteCode: meeting.value?.inviteCode ?? "",
+      };
+    }
+
+    window.open(newUrl, "_blank");
   } finally {
     loadingMeet.value = false;
   }
@@ -452,7 +543,12 @@ function startBrainstorm() {
 }
 
 async function copyInviteCode() {
-  await navigator.clipboard.writeText(editable.value.inviteCode);
+  const code = editable.value?.inviteCode || meeting.value?.inviteCode || "";
+  if (!code) {
+    alert("邀請碼尚未產生");
+    return;
+  }
+  await navigator.clipboard.writeText(code);
   alert("已複製！");
 }
 </script>
@@ -764,5 +860,17 @@ async function copyInviteCode() {
   0% { opacity: 1; }
   50% { opacity: 0.4; }
   100% { opacity: 1; }
+}
+
+.meet-link {
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.meet-link:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
 }
 </style>

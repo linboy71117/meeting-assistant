@@ -2,46 +2,10 @@
 
 const express = require("express");
 const router = express.Router();
-const fs = require("fs");
-const path = require("path");
-const { OAuth2Client } = require("google-auth-library");
+const { getGoogleOAuthClient } = require("../utils/googleOAuthManager");
 const { getMeetingFromCache, setMeetingCache } = require("../utils/cacheManager");
 
-// 初始化 Google OAuth 2.0 客戶端
-let googleClient = null;
-
-function initGoogleClient() {
-  try {
-    const keyPath = process.env.GOOGLE_OAUTH_KEY_PATH || "./oauth/client_secret.json";
-    const fullPath = path.resolve(keyPath);
-    
-    if (!fs.existsSync(fullPath)) {
-      console.warn(`Google OAuth key file not found at ${fullPath}`);
-      return null;
-    }
-
-    const credentials = JSON.parse(fs.readFileSync(fullPath, "utf8"));
-    const webConfig = credentials.web;
-    
-    googleClient = new OAuth2Client(
-      webConfig.client_id,
-      webConfig.client_secret,
-      webConfig.redirect_uris[0]
-    );
-    
-    console.log("✓ Google OAuth client initialized");
-    return googleClient;
-  } catch (err) {
-    console.error("Error initializing Google OAuth client:", err);
-    return null;
-  }
-}
-
 module.exports = (pool, redis) => {
-  // 初始化 Google OAuth 客戶端
-  if (!googleClient) {
-    googleClient = initGoogleClient();
-  }
 
   // Google OAuth 驗證端點 (用於 ID Token 方式)
   router.post("/auth/google", async (req, res) => {
@@ -51,11 +15,12 @@ module.exports = (pool, redis) => {
       return res.status(400).json({ error: "idToken 為必填欄位" });
     }
 
-    if (!googleClient) {
-      return res.status(500).json({ error: "Google OAuth client not initialized" });
-    }
-
     try {
+      const googleClient = getGoogleOAuthClient();
+      if (!googleClient) {
+        return res.status(500).json({ error: "Google OAuth client not initialized" });
+      }
+
       // 驗證 ID Token
       const ticket = await googleClient.verifyIdToken({
         idToken,
@@ -127,11 +92,12 @@ module.exports = (pool, redis) => {
       return res.status(400).json({ error: "Missing authorization code" });
     }
 
-    if (!googleClient) {
-      return res.status(500).json({ error: "Google OAuth client not initialized" });
-    }
-
     try {
+      const googleClient = getGoogleOAuthClient();
+      if (!googleClient) {
+        return res.status(500).json({ error: "Google OAuth client not initialized" });
+      }
+
       // 交換 authorization code 為 tokens
       const { tokens } = await googleClient.getToken(code);
       
@@ -155,15 +121,27 @@ module.exports = (pool, redis) => {
 
         let userId;
         if (existing.rowCount > 0) {
-          // 用戶已存在，直接登入
+          // 用戶已存在，更新 tokens
           userId = existing.rows[0].id;
+          await client.query(
+            `UPDATE users 
+             SET google_access_token = $1, 
+                 google_refresh_token = $2,
+                 picture = $3
+             WHERE google_id = $4`,
+            [tokens.access_token, tokens.refresh_token, payload.picture, googleId]
+          );
+          console.log(`[AUTH_CALLBACK] Updated tokens for user: ${email}`);
         } else {
-          // 新用戶，自動註冊
+          // 新用戶，自動註冊並儲存 tokens
           const result = await client.query(
-            "INSERT INTO users (google_id, email) VALUES ($1, $2) RETURNING id, email, created_at",
-            [googleId, email]
+            `INSERT INTO users (google_id, email, google_access_token, google_refresh_token, picture) 
+             VALUES ($1, $2, $3, $4, $5) 
+             RETURNING id, email, created_at`,
+            [googleId, email, tokens.access_token, tokens.refresh_token, payload.picture]
           );
           userId = result.rows[0].id;
+          console.log(`[AUTH_CALLBACK] Created new user with tokens: ${email}`);
         }
 
         // 儲存用戶 ID 到 session 或回傳到前端
@@ -427,11 +405,14 @@ function groupMeetings(rows) {
   for (const row of rows) {
     let m = map.get(row.id);
     if (!m) {
+      // 保留完整的 ISO 字串（含時區信息），讓前端自行處理顯示
+      const dateStr = row.date ? row.date.toISOString() : null;
+      
       m = {
         id: row.id,
         inviteCode: row.invite_code,
         title: row.title,
-        date: row.date ? row.date.toISOString().slice(0, 10) : null,
+        date: dateStr,
         description: row.description,
         summary: row.summary,
         version: row.version,

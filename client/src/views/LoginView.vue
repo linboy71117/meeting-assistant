@@ -73,15 +73,25 @@ const startGoogleLogin = async () => {
     localStorage.setItem('oauth_state', state);
     
     // 構造 Google OAuth 授權 URL
+    // Scope 需要用空格分隔，不能放在 URLSearchParams 中（會被編碼）
+    const scopes = [
+      'openid',
+      'email',
+      'profile',
+      'https://www.googleapis.com/auth/calendar'
+    ].join(' ');
+    
     const params = new URLSearchParams({
       client_id: clientId,
       redirect_uri: redirectUri,
       response_type: 'code',
-      scope: 'openid email profile',
+      access_type: 'offline', // 請求 refresh token
+      prompt: 'consent', // 強制顯示授權畫面以獲取 refresh token
       state: state
     });
     
-    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+    // 手動添加 scope（因為 URLSearchParams 會編碼空格）
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params}&scope=${encodeURIComponent(scopes)}`;
     
     // 開啟 OAuth 授權視窗
     const width = 500;
