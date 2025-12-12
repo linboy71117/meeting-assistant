@@ -147,6 +147,8 @@ async function initDatabase(pool) {
       "meetings",
       "meeting_participants",
       "agenda_items",
+      "brainstormings",
+      "brainstorming_items",
     ];
 
     const { rows } = await pool.query(
