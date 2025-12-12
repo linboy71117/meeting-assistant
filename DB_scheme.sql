@@ -11,8 +11,8 @@ CREATE TABLE users (
   created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_google_id ON users(google_id);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
 
 -- 會議表（invite_code 即為 Google Meet 代碼）
 CREATE TABLE IF NOT EXISTS meetings (
@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS meetings (
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   version      INT NOT NULL DEFAULT 1
  );
-CREATE INDEX idx_meetings_invite_code ON meetings(invite_code);
+CREATE INDEX IF NOT EXISTS idx_meetings_invite_code ON meetings(invite_code);
 
 -- 會議參與者表
 CREATE TABLE IF NOT EXISTS meeting_participants (

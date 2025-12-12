@@ -76,8 +76,7 @@
                 {{ editable.meetUrl || "尚未建立 (儲存後可建立)" }}
               </div>
             </div>
-          </div>
-        </div>
+        
 
         <div class="form-card">
           <div class="card-header-row">
@@ -242,12 +241,7 @@ const brainstormingActive = ref(false);
 // Edit State
 const editable = ref<any>({});
 const editableAgenda = ref<any[]>([]);
-const isEditing = ref(
-  route.query.edit === "1" || route.query.new === "1"
-);
 const isNewMeeting = ref(route.query.new === "1");
-
-const loadingMeet = ref(false);
 
 // Helpers
 /**
