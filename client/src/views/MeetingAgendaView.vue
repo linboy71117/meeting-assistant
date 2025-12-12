@@ -24,7 +24,7 @@
 
             <div class="form-group">
               <label>日期</label>
-              <input type="date" v-model="editable.date" class="input-field" />
+              <input type="datetime-local" v-model="editable.date" class="input-field" />
             </div>
 
             <div class="form-group">
@@ -68,6 +68,11 @@
                 <button class="btn-delete" @click="removeAgenda(idx)" title="刪除">✕ 刪除</button>
               </div>
 
+              <div class="form-group full">
+                <label>負責人</label>
+                <input v-model="item.owner" class="input-field" placeholder="選填" />
+              </div>
+
               <div class="item-inputs">
                 <div class="form-group small-col">
                   <label>時間 (分)</label>
@@ -77,11 +82,6 @@
                 <div class="form-group main-col">
                   <label>環節標題</label>
                   <input v-model="item.title" class="input-field" placeholder="例如：專案報告" />
-                </div>
-
-                <div class="form-group user-col">
-                  <label>負責人</label>
-                  <input v-model="item.owner" class="input-field" placeholder="選填" />
                 </div>
 
                 <div class="form-group full">
@@ -122,8 +122,8 @@
         <ul v-if="agendaToShow.length" class="agenda-list">
           <li v-for="(item, idx) in agendaToShow" :key="idx" class="agenda-item">
             <div class="agenda-time-box">
-              <span class="time-val">{{ item.time }}</span>
-              <span class="time-unit">min</span>
+              <span class="time-val">{{ item.time || '—' }}</span>
+              <span class="time-unit" v-if="item.time">min</span>
             </div>
             <div class="agenda-content">
               <div class="agenda-header">
@@ -597,7 +597,10 @@ async function copyInviteCode() {
   margin-bottom: 4px;
 }
 
-.form-group.full { grid-column: 1 / -1; }
+.form-group.full { 
+  grid-column: 1 / -1;
+  width: 100%;
+}
 
 .form-group label {
   font-size: 13px;
@@ -622,7 +625,10 @@ async function copyInviteCode() {
 }
 
 .input-textarea { resize: vertical; }
-.input-textarea.small { min-height: 40px; }
+.input-textarea.small { 
+  min-height: 40px;
+  max-width: 350px;
+}
 
 /* 邀請碼行 */
 .input-row { display: flex; gap: 8px; align-items: center; }
@@ -678,11 +684,15 @@ async function copyInviteCode() {
 .btn-delete:hover { opacity: 1; text-decoration: underline; }
 
 .item-inputs {
-  display: grid; grid-template-columns: 80px 1fr 100px; gap: 10px;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 80px 1fr; /* 兩欄：時間 | 內容(標題 + 負責人)
+                                 負責人會堆疊於標題下方 */
+  gap: 10px;
 }
 .small-col { grid-column: 1; }
 .main-col { grid-column: 2; }
-.user-col { grid-column: 3; }
+.user-col { grid-column: 2; }
 
 /* 底部操作區 */
 .bottom-actions-bar {
