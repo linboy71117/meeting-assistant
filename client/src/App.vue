@@ -128,7 +128,7 @@ watch(
 
 .app-inner {
   width: 100%;
-  max-width: 370px;
+  max-width: 390px;
   box-sizing: border-box;
   background: #fff;
   border-radius: 10px;
