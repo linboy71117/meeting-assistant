@@ -76,7 +76,7 @@
               <div class="item-inputs">
                 <div class="form-group small-col">
                   <label>時間 (分)</label>
-                  <input v-model="item.time" type="number" class="input-field" placeholder="10" />
+                  <input v-model="item.time" type="number" class="input-field" placeholder="" />
                 </div>
 
                 <div class="form-group main-col">

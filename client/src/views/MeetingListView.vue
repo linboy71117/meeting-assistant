@@ -1,12 +1,13 @@
 <template>
   <div class="popup-container">
 
-    <h1 class="app-title">AI Meeting Assistant</h1>
+    <!-- <h1 class="app-title">AI Meeting Assistant</h1> -->
 
-    <div class="tabs">
+    <!-- <div class="tabs">
       <button class="tab active">Meetings</button>
       <button class="tab" @click="$router.push('/settings')">Settings</button>
-    </div>
+    </div> -->
+    <div style="padding-top: 10px;"></div>
 
     <div class="action-area">
       <button class="btn-main-action" @click="showMenu = !showMenu">
