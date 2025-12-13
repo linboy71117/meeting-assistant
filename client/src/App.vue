@@ -3,7 +3,7 @@
     <!-- Wrapper for centered app content with shadow -->
     <div class="app-inner">
       <!-- Top Navigation Bar -->
-      <header class="top-nav">
+      <header v-if="showTopNav" class="top-nav">
       <h1 class="app-title">AI Meeting Assistant</h1>
 
       <nav class="nav-tabs">
@@ -37,7 +37,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from "vue";
+import { ref, watch, computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 const router = useRouter();
@@ -50,6 +50,12 @@ function go(path, tab) {
   currentTab.value = tab;
   router.push(path);
 }
+
+// 決定是否顯示頂部導航：Run 模式時隱藏
+const showTopNav = computed(() => {
+  const p = route.path || '';
+  return !p.includes('/run');
+});
 
 // auto detect tab when user enters /meetings/:id
 watch(
