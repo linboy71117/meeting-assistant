@@ -34,3 +34,49 @@ chrome.action.onClicked.addListener(async () => {
     });
   }
 });
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  
+  // 檢查是否有特定 Meet 分頁開啟
+  if (message.action === 'checkMeetTab') {
+    const meetCode = message.meetCode;
+    
+    if (!meetCode) {
+      sendResponse({ isInMeeting: false });
+      return true;
+    }
+
+    chrome.tabs.query({}, (tabs) => {
+      console.log("[background] All tabs:", tabs.map(t => t.url))
+      const found = tabs.some((tab) => 
+        tab.url && tab.url.includes(`meet.google.com/${meetCode}`)
+      );
+
+
+    console.log("[background] Found meet tab:", found); // ← 加入這行
+    sendResponse({ isInMeeting: found });
+    });
+
+    return true; // 表示會異步回應
+  }
+
+  // ...existing code...
+});
+
+// 監聽分頁更新，通知 popup
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.url && changeInfo.url.includes('meet.google.com')) {
+    // 廣播給所有 extension 頁面
+    chrome.runtime.sendMessage({ 
+      action: 'meetTabChanged',
+      url: changeInfo.url 
+    }).catch(() => {}); // 忽略無接收者的錯誤
+  }
+});
+
+chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
+  chrome.runtime.sendMessage({ 
+    action: 'meetTabClosed',
+    tabId: tabId 
+  }).catch(() => {});
+});
