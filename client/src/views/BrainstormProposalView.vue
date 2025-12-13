@@ -111,7 +111,7 @@ async function submitIdea() {
   if (!newIdea.value.trim()) return;
 
   const payload = {
-    userId: localStorage.getItem("userId"),
+    userId: localStorage.getItem("meeting_user_id"),
     idea: newIdea.value.trim(),
   };
 
