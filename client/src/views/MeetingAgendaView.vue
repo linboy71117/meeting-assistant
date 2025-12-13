@@ -477,7 +477,7 @@ async function openGoogleMeet() {
 function startRunMode() {
   if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getURL) {
     const url = chrome.runtime.getURL(`index.html#/meetings/${meetingId}/run`);
-    const targetWidth = 360;
+    const targetWidth = 390;
     const targetHeight = window.screen.availHeight;
     const left = Math.round(window.screen.availWidth - targetWidth);
     
