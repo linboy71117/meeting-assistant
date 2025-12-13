@@ -17,9 +17,10 @@
         {{ userInitials }}
       </div>
       <div class="info">
-        <h3 class="name">{{ userName }}</h3>
+        <div class="name-row">
+          <h3 class="name">{{ userName || '未命名使用者' }}</h3>
+        </div>
         <p class="email">{{ userEmail }}</p>
-        <p class="uid">ID: {{ userId }}</p>
       </div>
     </div>
 
@@ -46,6 +47,7 @@ import { useRouter } from 'vue-router';
 
 const router = useRouter();
 
+const API_BASE = (import.meta as any).env?.VITE_BACKEND_URL || 'http://localhost:3000';
 const userId = ref('');
 const userName = ref('');
 const userEmail = ref('');
@@ -62,9 +64,10 @@ const userInitials = computed(() => {
 });
 
 onMounted(() => {
-  // 從 LocalStorage 讀取資料顯示
-  userId.value = localStorage.getItem('meeting_user_id') || '未知 ID';
-  userName.value = localStorage.getItem('meeting_user_name') || '未知使用者';
+  // 從 LocalStorage 讀取資料顯示（由 OAuth callback 或先前登入設定）
+  const storedId = localStorage.getItem('meeting_user_id');
+  userId.value = storedId ? storedId : '';
+  userName.value = localStorage.getItem('meeting_user_name') || '';
   userEmail.value = localStorage.getItem('meeting_user_email') || '';
 });
 
@@ -84,10 +87,19 @@ function handleLogout() {
 <style scoped>
 .page-container {
   padding: 16px;
-  max-width: 100%;
+  width: 100%;
   margin: 0 auto;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
+
+/* Settings: local input/button */
+.input-field {
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.name-row { display:flex; gap:8px; align-items:center; }
 
 .header {
   margin-bottom: 24px;

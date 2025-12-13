@@ -47,15 +47,15 @@ module.exports = (pool, redis) => {
         } else {
           // 新用戶，自動註冊
           const result = await client.query(
-            "INSERT INTO users (google_id, email) VALUES ($1, $2) RETURNING id, email, created_at",
-            [googleId, email]
+            "INSERT INTO users (google_id, email, username) VALUES ($1, $2, $3) RETURNING id, email, username, created_at",
+            [googleId, email, name]
           );
           userId = result.rows[0].id;
         }
 
         // 查詢用戶資訊
         const userResult = await client.query(
-          "SELECT id, email, created_at FROM users WHERE id = $1",
+          "SELECT id, email, username, created_at FROM users WHERE id = $1",
           [userId]
         );
 
@@ -110,6 +110,7 @@ module.exports = (pool, redis) => {
       const payload = ticket.getPayload();
       const googleId = payload.sub;
       const email = payload.email;
+      const name = payload.name;
 
       const client = await pool.connect();
       try {
@@ -135,10 +136,10 @@ module.exports = (pool, redis) => {
         } else {
           // 新用戶，自動註冊並儲存 tokens
           const result = await client.query(
-            `INSERT INTO users (google_id, email, google_access_token, google_refresh_token, picture) 
-             VALUES ($1, $2, $3, $4, $5) 
-             RETURNING id, email, created_at`,
-            [googleId, email, tokens.access_token, tokens.refresh_token, payload.picture]
+            `INSERT INTO users (google_id, email, username, google_access_token, google_refresh_token, picture) 
+             VALUES ($1, $2, $3, $4, $5, $6) 
+             RETURNING id, email, username, created_at`,
+            [googleId, email, name, tokens.access_token, tokens.refresh_token, payload.picture]
           );
           userId = result.rows[0].id;
           console.log(`[AUTH_CALLBACK] Created new user with tokens: ${email}`);
@@ -164,12 +165,14 @@ module.exports = (pool, redis) => {
               const authData = {
                 success: true,
                 user_id: '${userId}',
-                email: '${email}'
+                email: '${email}',
+                username: '${name || ''}'
               };
               
               // 也儲存到 localStorage 作為備用
               localStorage.setItem('meeting_user_id', '${userId}');
               localStorage.setItem('meeting_user_email', '${email}');
+              localStorage.setItem('meeting_user_name', '${name || ''}');
               
               // 發送 postMessage 給 opener
               if (window.opener) {

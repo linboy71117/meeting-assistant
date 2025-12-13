@@ -3,6 +3,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- 用戶表
 CREATE TABLE users (
   id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  username              TEXT,
   email                 TEXT UNIQUE,
   google_id             VARCHAR(255) NOT NULL UNIQUE,
   google_access_token   TEXT,  -- Google OAuth access token

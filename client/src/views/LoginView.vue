@@ -116,6 +116,10 @@ const startGoogleLogin = async () => {
       // 登入成功
       localStorage.setItem('meeting_user_id', result.user_id);
       localStorage.setItem('meeting_user_email', result.email);
+      // 儲存 username（若後端有回傳）以避免使用舊資料
+      if (result.username) {
+        localStorage.setItem('meeting_user_name', result.username);
+      }
       
       // 導向會議列表
       router.push('/meetings');
