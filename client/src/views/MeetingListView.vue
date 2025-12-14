@@ -1,12 +1,13 @@
 <template>
   <div class="popup-container">
 
-    <h1 class="app-title">AI Meeting Assistant</h1>
+    <!-- <h1 class="app-title">AI Meeting Assistant</h1> -->
 
-    <div class="tabs">
+    <!-- <div class="tabs">
       <button class="tab active">Meetings</button>
       <button class="tab" @click="$router.push('/settings')">Settings</button>
-    </div>
+    </div> -->
+    <div style="padding-top: 10px;"></div>
 
     <div class="action-area">
       <button class="btn-main-action" @click="showMenu = !showMenu">
@@ -270,8 +271,8 @@ onMounted(loadMeetings);
 /* Container Layout */
 .popup-container {
   width: 100%;
-  max-width: 100% !important;
-  padding: 14px;
+  max-width: 350px !important;
+  /* padding: 14px; */
   margin: 0 auto;
   font-family: -apple-system, BlinkMacSystemFont, system-ui;
   padding-bottom: 80px;

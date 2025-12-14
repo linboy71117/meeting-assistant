@@ -52,14 +52,14 @@
 
           <template v-if="isHost">
             <button v-if="!isRunning" class="btn-control start" @click="startTimer">
-              ▶ 開始
+              ▶<br>開始
             </button>
             <button v-else class="btn-control pause" @click="pauseTimer">
-              ⏸ 暫停
+              ⏸<br>暫停
             </button>
 
             <button class="btn-control next" @click="handleNextItem">
-              {{ isLastItem ? '結束' : '下一項' }} →
+              →<br>{{ isLastItem ? '結束' : '下一項' }}
             </button>
           </template>
         </div>

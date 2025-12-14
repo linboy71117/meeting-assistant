@@ -1,7 +1,9 @@
 <template>
   <div class="app-container">
-    <!-- Top Navigation Bar -->
-    <header class="top-nav">
+    <!-- Wrapper for centered app content with shadow -->
+    <div class="app-inner">
+      <!-- Top Navigation Bar -->
+      <header v-if="showTopNav" class="top-nav">
       <h1 class="app-title">AI Meeting Assistant</h1>
 
       <nav class="nav-tabs">
@@ -26,15 +28,16 @@
       </nav>
     </header>
 
-    <!-- Page Content -->
-    <main class="content-area">
-      <router-view />
-    </main>
+      <!-- Page Content -->
+      <main class="content-area">
+        <router-view />
+      </main>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, watch } from "vue";
+import { ref, watch, computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 const router = useRouter();
@@ -47,6 +50,12 @@ function go(path, tab) {
   currentTab.value = tab;
   router.push(path);
 }
+
+// 決定是否顯示頂部導航：Run 模式時隱藏
+const showTopNav = computed(() => {
+  const p = route.path || '';
+  return !p.includes('/run');
+});
 
 // auto detect tab when user enters /meetings/:id
 watch(
@@ -64,8 +73,12 @@ watch(
 .app-container {
   width: 100%;
   min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   background: #fafafa;
   font-family: "Inter", system-ui, sans-serif;
+  padding-top: 50px;
 }
 
 /* ----- Header Navigation Bar ----- */
@@ -74,6 +87,9 @@ watch(
   border-bottom: 1px solid #e5e7eb;
   padding: 8px;
   text-align: center;
+  width: 100%;
+  box-sizing: border-box;
+  box-sizing: border-box;
 }
 
 .app-title {
@@ -109,6 +125,20 @@ watch(
 
 /* ----- Main Content ----- */
 .content-area {
-  padding: 10px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  width: 100%;
+  /* padding: 12px; */
+}
+
+.app-inner {
+  width: 100%;
+  max-width: 390px;
+  box-sizing: border-box;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  overflow: hidden;
 }
 </style>
