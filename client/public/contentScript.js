@@ -68,37 +68,57 @@ function createPanel(routePath = '/') {
 
 function setupDraggable(panel) {
   let isDragging = false;
-  let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+  // 紀錄「開始拖曳當下」的狀態
+  let startX = 0, startY = 0;
+  let initialLeft = 0, initialTop = 0;
+
   const header = panel.querySelector('.ai-panel-header');
   if (!header) return;
 
   header.addEventListener('mousedown', (e) => {
-    if (e.target.closest('button')) return;
+    if (e.target.closest('button')) return; // 忽略按鈕點擊
+
     isDragging = true;
     startX = e.clientX; 
     startY = e.clientY;
+
+    // 1. 取得當前實際位置與尺寸
     const rect = panel.getBoundingClientRect();
-    startLeft = rect.left; 
-    startTop = rect.top;
+    initialLeft = rect.left;
+    initialTop = rect.top;
+
+    // 2. 【關鍵】鎖定尺寸 (將 computed style 轉為 inline style)
+    // 這防止了當我們移除 bottom 屬性時，高度塌陷
+    panel.style.width = `${rect.width}px`;
+    panel.style.height = `${rect.height}px`;
+
+    // 3. 設定初始位置為絕對座標 (px)，並解除相對約束
+    panel.style.left = `${initialLeft}px`;
+    panel.style.top = `${initialTop}px`;
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
     
-    // 加上透明遮罩讓 iframe 不會吃掉滑鼠事件
+    // 4. 加入遮罩防止 iframe 吃掉事件
     const overlay = document.createElement('div');
     overlay.id = 'drag-overlay';
     Object.assign(overlay.style, {
       position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 9999, cursor: 'move'
     });
     panel.appendChild(overlay);
+    
     document.body.style.userSelect = 'none';
   });
 
   document.addEventListener('mousemove', (e) => {
     if (!isDragging) return;
+
+    // 計算位移量
     const dx = e.clientX - startX; 
     const dy = e.clientY - startY;
-    panel.style.left = `${startLeft + dx}px`;
-    panel.style.top = `${startTop + dy}px`;
-    panel.style.right = 'auto'; 
-    panel.style.bottom = 'auto';
+    
+    // 設定新位置 = 初始位置 + 位移量
+    panel.style.left = `${initialLeft + dx}px`;
+    panel.style.top = `${initialTop + dy}px`;
   });
 
   document.addEventListener('mouseup', () => { 
