@@ -146,17 +146,7 @@
 
         <div class="actions">
   
-          <button 
-            v-if="!isInMeeting"
-            class="btn-google-meet" 
-            @click="openGoogleMeet" 
-            :disabled="loadingMeet"
-          >
-            <span v-if="loadingMeet">建立中...</span>
-            <span v-else>📹 開啟 Google Meet</span>
-          </button>
-
-          <div v-else class="status-in-meet">
+          <div v-if="isInMeeting" class="status-in-meet">
             <span class="dot">●</span> Google Meet 進行中
           </div>
 
@@ -202,7 +192,6 @@ const loadError = ref("");
 const meeting = ref<any | null>(null);
 const summary = ref("");
 const isEditing = ref(route.query.edit === "1" || route.query.new === "1");
-const loadingMeet = ref(false);
 const brainstormingActive = ref(false);
 
 // Edit State
@@ -310,6 +299,16 @@ async function loadMeeting() {
   socket.on("new-brainstorming-created", () => {
     brainstormingActive.value = true;
   });
+  socket.on("meeting-updated", (data: any) => {
+    try {
+      // 更新整個 meeting 資料並重設可編輯狀態
+      meeting.value = data;
+      resetEditableFromMeeting();
+      console.log('Received meeting-updated via socket', data);
+    } catch (e) {
+      console.error('Error applying meeting-updated', e);
+    }
+  });
 }
 
 const isInMeeting = ref(false);
@@ -356,7 +355,11 @@ onMounted(async () => {
   setupTabListeners();
 });
 onUnmounted(() => {
-  if (socket) socket.off("new-brainstorming-created");
+  if (socket) {
+    socket.off("new-brainstorming-created");
+    socket.off("meeting-updated");
+    try { socket.emit('leave-meeting', meetingId); socket.disconnect(); } catch(e){}
+  }
 });
 
 // --- Agenda CRUD ---
@@ -438,59 +441,41 @@ async function createNewGoogleMeet() {
   try { return w.location.href; } catch { return w.location.href; }
 }
 
-async function openGoogleMeet() {
-  loadingMeet.value = true;
-  try {
-    // 根據 inviteCode 生成 Google Meet 連結
-    const inviteCode = editable.value?.inviteCode || meeting.value?.inviteCode || "";
-    
-    if (inviteCode) {
-      // 直接使用 inviteCode 打開 Google Meet
-      const meetUrl = `https://meet.google.com/${inviteCode}`;
-      window.open(meetUrl, "_blank");
-      return;
-    }
-
-    // 如果沒有 inviteCode，創建新的 Google Meet
-    const newUrl = await createNewGoogleMeet();
-    if (!newUrl) {
-      alert("無法建立 Google Meet！");
-      return;
-    }
-
-    if (!editable.value) {
-      editable.value = {
-        title: meeting.value?.title ?? "",
-        date: normalizeDate(meeting.value?.date),
-        description: meeting.value?.description ?? "",
-        inviteCode: meeting.value?.inviteCode ?? "",
-      };
-    }
-
-    window.open(newUrl, "_blank");
-  } finally {
-    loadingMeet.value = false;
-  }
-}
-
 // --- Navigation ---
-function startRunMode() {
-  if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getURL) {
-    const url = chrome.runtime.getURL(`index.html#/meetings/${meetingId}/run`);
-    const targetWidth = 390;
-    const targetHeight = window.screen.availHeight;
-    const left = Math.round(window.screen.availWidth - targetWidth);
-    
-    chrome.windows.create({
-      url: url,
-      type: "popup",
-      width: targetWidth,
-      height: targetHeight,
-      left: left,
-      top: 0,
-      focused: true
-    });
+async function startRunMode() {
+  // 1. 準備 Google Meet 網址
+  let meetUrl = "";
+  const inviteCode = editable.value?.inviteCode || meeting.value?.inviteCode;
+
+  if (inviteCode) {
+    meetUrl = `https://meet.google.com/${inviteCode}`;
   } else {
+    meetUrl = "https://meet.google.com/new"; 
+  }
+
+  // 2. 判斷環境並開啟分頁
+  if (typeof chrome !== "undefined" && chrome.tabs) {
+    try {
+      // 開啟 Google Meet 新分頁 (設為 active)
+      await chrome.tabs.create({ url: meetUrl, active: true });
+      
+      // 注意：因為我們已經在 background.js 寫了「偵測到 Meet 網址就自動插入 Panel」的邏輯，
+      // 所以這裡只需要負責「開分頁」就好，Panel 會由 background.js + contentScript 自動處理。
+
+      // 3. 【新增】關閉目前的 Popup Window
+      // 取得目前視窗 (就是這個 Extension 的獨立視窗)
+      const currentWindow = await chrome.windows.getCurrent();
+      if (currentWindow && currentWindow.id) {
+        await chrome.windows.remove(currentWindow.id);
+      }
+
+    } catch (e) {
+      console.warn("Extension API failed:", e);
+      window.open(meetUrl, "_blank");
+    }
+  } else {
+    // 本地開發環境 fallback
+    window.open(meetUrl, "_blank");
     router.push(`/meetings/${meetingId}/run`);
   }
 }
