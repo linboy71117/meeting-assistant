@@ -310,6 +310,16 @@ async function loadMeeting() {
   socket.on("new-brainstorming-created", () => {
     brainstormingActive.value = true;
   });
+  socket.on("meeting-updated", (data: any) => {
+    try {
+      // 更新整個 meeting 資料並重設可編輯狀態
+      meeting.value = data;
+      resetEditableFromMeeting();
+      console.log('Received meeting-updated via socket', data);
+    } catch (e) {
+      console.error('Error applying meeting-updated', e);
+    }
+  });
 }
 
 const isInMeeting = ref(false);
@@ -356,7 +366,11 @@ onMounted(async () => {
   setupTabListeners();
 });
 onUnmounted(() => {
-  if (socket) socket.off("new-brainstorming-created");
+  if (socket) {
+    socket.off("new-brainstorming-created");
+    socket.off("meeting-updated");
+    try { socket.emit('leave-meeting', meetingId); socket.disconnect(); } catch(e){}
+  }
 });
 
 // --- Agenda CRUD ---

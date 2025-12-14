@@ -128,6 +128,10 @@ const currentIndex = ref(0);
 const isRunning = ref(false);
 const brainstormingActive = ref(false); // 新增：腦力激盪狀態
 
+// 同步的會議高階欄位
+const meetingTitle = ref('');
+const meetingDescription = ref('');
+const meetingSummary = ref('');
 const timeLeft = ref(0);
 const timerInterval = ref<any>(null);
 
@@ -186,6 +190,11 @@ onMounted(async () => {
       agenda.value = data.agenda;
     }
     
+    // 初始化高階欄位（title/description/summary）
+    if (data.title) meetingTitle.value = data.title;
+    if (data.description) meetingDescription.value = data.description;
+    if (data.summary) meetingSummary.value = data.summary;
+    
     // 2. 身分確認
     if (userId) {
       const roleRes = await fetch(`${API_BASE}/api/users/${userId}/meetings`);
@@ -220,6 +229,10 @@ onMounted(async () => {
        brainstormingActive.value = true;
     });
 
+     // 監聽後端的會議更新，更新高階欄位與議程
+     socket.off('meeting-updated', handleMeetingUpdated);
+     socket.on('meeting-updated', handleMeetingUpdated);
+
     socket.emit('join-meeting', meetingId);
 
     // Host 初始廣播
@@ -243,12 +256,40 @@ onUnmounted(() => {
   }
   socket.off('timer-sync', handleTimerSync);
   socket.off('new-brainstorming-created'); // 記得移除監聽
+  socket.off('meeting-updated', handleMeetingUpdated);
 
   if (socket.connected) {
     // 這裡不一定要 disconnect，視你的全域 socket 策略而定
     // socket.disconnect();
   }
 });
+
+// 處理後端廣播的 meeting 更新
+function handleMeetingUpdated(data: any) {
+  if (!data) return;
+  try {
+    // 更新議程與可能的其他欄位，然後重置 timer 狀態以完整重新渲染
+    if (data.agenda && Array.isArray(data.agenda)) {
+      agenda.value = data.agenda;
+      // 若目前索引超過新議程長度，調整到最後或重設為 0
+      if (currentIndex.value >= agenda.value.length) {
+        currentIndex.value = Math.max(0, agenda.value.length - 1);
+      }
+      // 依新的 currentIndex 重設時間（不發送 socket 廣播）
+      resetTimerForCurrentIndex(false);
+    }
+
+    // 若後端有提供其他可同步欄位，亦可在此處更新
+    // 例如：data.title, data.summary
+    if (data.title !== undefined) meetingTitle.value = data.title;
+    if (data.description !== undefined) meetingDescription.value = data.description;
+    if (data.summary !== undefined) meetingSummary.value = data.summary;
+
+    console.log('meeting-updated received in RunView — full refresh applied', data);
+  } catch (e) {
+    console.error('Error applying meeting-updated in RunView', e);
+  }
+}
 
 // === Timer Controls ===
 function startTimer(shouldEmit = true) {
