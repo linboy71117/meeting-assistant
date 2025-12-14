@@ -33,7 +33,7 @@ function initGoogleOAuthClient() {
     googleOAuthClient = new OAuth2Client(
       webConfig.client_id,
       webConfig.client_secret,
-      webConfig.redirect_uris[0]
+      webConfig.redirect_uris[1]
     );
     
     console.log("[GOOGLE_OAUTH] OAuth2Client initialized successfully");
