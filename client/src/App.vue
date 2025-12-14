@@ -78,7 +78,7 @@ watch(
   align-items: center;
   background: #fafafa;
   font-family: "Inter", system-ui, sans-serif;
-  padding-top: 50px;
+  /* padding-top: 50px; */
 }
 
 /* ----- Header Navigation Bar ----- */

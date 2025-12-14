@@ -1,36 +1,130 @@
-chrome.action.onClicked.addListener(async () => {
-  
-  // 1. 定義我們要開的視窗網址 (指向你的 Vue App)
-  const targetUrl = chrome.runtime.getURL("index.html");
+// background.js
 
-  // 2. 檢查是否已經有開過的視窗？(避免重複開一大堆)
-  const existingWindows = await chrome.windows.getAll({ populate: true });
-  
-  // 搜尋有沒有哪個視窗的 Tab 網址跟我們的一樣
-  let existingWinId = null;
-  
-  for (const win of existingWindows) {
-    if (win.tabs && win.tabs.length > 0) {
-      // 檢查該視窗的第一個分頁是否為我們的 App
-      if (win.tabs[0].url && win.tabs[0].url.startsWith(targetUrl)) {
-        existingWinId = win.id;
-        break;
+const API_BASE = "https://meet-assistant-backend.daxuerdeasthsinchu.dpdns.org";
+
+chrome.action.onClicked.addListener(async () => {
+  const appUrl = chrome.runtime.getURL('index.html');
+  // Regex: 匹配 Google Meet 網址格式
+  const MEET_URL_REGEX = /meet\.google\.com\/([a-z]{3}-[a-z]{4}-[a-z]{3})/;
+
+  // 1. 取得當前 Active Tab
+  let activeTab = null;
+  try {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    activeTab = tabs[0];
+  } catch (e) {
+    console.warn("Failed to get active tab", e);
+  }
+
+  // -----------------------------------------------------------
+  // 情境 A：在 Google Meet 分頁中 -> 呼叫 lookup API -> 插入 Panel
+  // -----------------------------------------------------------
+  if (activeTab && activeTab.id && activeTab.url) {
+    const match = activeTab.url.match(MEET_URL_REGEX);
+    
+    if (match) {
+      const meetCode = match[1]; // 例如 "abc-defg-hij"
+      console.log(`[Background] Detected Meet Code: ${meetCode}`);
+
+      // A-1. 呼叫後端 Lookup API
+      let targetMeetingId = null;
+      try {
+        // 使用剛新增的 API
+        const foundId = await findMeetingIdByCode(meetCode);
+        if (foundId) {
+          targetMeetingId = foundId;
+          console.log(`[Background] Found ID: ${targetMeetingId}`);
+        } else {
+          console.log(`[Background] Code ${meetCode} not found in DB.`);
+        }
+      } catch (err) {
+        console.warn("[Background] Lookup API failed:", err);
       }
+
+      // A-2. 通知 Content Script
+      // 如果有找到 ID，Panel 會直接載入 Run Mode
+      // 如果沒找到 (targetMeetingId 為 null)，Panel 會載入首頁
+      const actionPayload = { 
+        action: 'show-meeting-panel',
+        meetingId: targetMeetingId 
+      };
+
+      try {
+        await chrome.tabs.sendMessage(activeTab.id, actionPayload);
+      } catch (err) {
+        // 若 Content Script 未注入，手動注入
+        console.log("Injecting content script...");
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId: activeTab.id },
+            files: ['contentScript.js'] 
+          });
+          
+          setTimeout(async () => {
+              try {
+                  await chrome.tabs.sendMessage(activeTab.id, actionPayload);
+              } catch(e) {}
+          }, 500); 
+        } catch (ex) {
+          console.warn('Injection failed', ex);
+        }
+      }
+      return; // 結束，不在外部開啟視窗
     }
   }
 
-  // 3. 判斷邏輯
-  if (existingWinId) {
-    // A. 如果已經開了，就把它「帶到最前面」(Focus)
-    chrome.windows.update(existingWinId, { focused: true });
-  } else {
-    // B. 如果沒開，就「建立新視窗」
-    chrome.windows.create({
-      url: targetUrl,
-      type: "popup", // "popup" 類型沒有網址列和書籤列，看起來像獨立 App
-      width: 360,    // 設定你想要的寬度
-      height: 660,   // 設定你想要的高度
+  // -----------------------------------------------------------
+  // 情境 B：不在 Meet 中 -> 開啟獨立 Popup Window
+  // -----------------------------------------------------------
+  console.log("[Background] Not in Meet, opening popup window...");
+  
+  // 清理其他分頁的 Panel
+  try {
+    const allTabs = await chrome.tabs.query({});
+    for (const t of allTabs) {
+      if (t.id) chrome.tabs.sendMessage(t.id, { action: 'hide-meeting-panel' }).catch(() => {});
+    }
+  } catch (e) {}
+
+  // 開啟/聚焦獨立視窗
+  try {
+    const existingTabs = await chrome.tabs.query({ url: appUrl });
+    if (existingTabs.length > 0) {
+      const t = existingTabs[0];
+      if (t.windowId) {
+        await chrome.windows.update(t.windowId, { focused: true });
+        await chrome.tabs.update(t.id, { active: true });
+      }
+      return; 
+    }
+
+    await chrome.windows.create({
+      url: appUrl,
+      type: 'popup',
+      width: 400,
+      height: 600,
       focused: true
     });
+  } catch (e) {
+    console.warn('Window create failed', e);
   }
 });
+
+/**
+ * 使用新的 API 查找 Meeting ID
+ */
+async function findMeetingIdByCode(code) {
+  try {
+    // 呼叫後端: GET /api/meetings/lookup?inviteCode=xxx
+    const res = await fetch(`${API_BASE}/api/meetings/lookup?inviteCode=${code}`);
+    
+    if (res.status === 404) return null; // 找不到
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    
+    const data = await res.json();
+    return data.id; // 回傳 UUID
+  } catch (e) {
+    console.error("[Background] API error:", e);
+    return null;
+  }
+}

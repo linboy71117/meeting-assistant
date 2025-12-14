@@ -48,6 +48,48 @@ module.exports = (pool, redis, io) => {
     }
   });
 
+    // Get with invite code
+  router.get("/lookup", async (req, res) => {
+    // 前端傳來 ?inviteCode=abc-defg-hij
+    const { inviteCode } = req.query; 
+
+    if (!inviteCode) {
+      return res.status(400).json({ error: "inviteCode is required" });
+    }
+
+    try {
+      const client = await pool.connect();
+      try {
+        // 因為 invite_code 有 index，這查詢會非常快
+        const result = await client.query(
+          `SELECT id, title, invite_code, status 
+           FROM meetings 
+           WHERE invite_code = $1 
+           LIMIT 1`,
+          [inviteCode]
+        );
+
+        if (result.rowCount === 0) {
+          return res.status(404).json({ error: "Meeting not found" });
+        }
+
+        // 回傳基本資訊給 extension
+        const row = result.rows[0];
+        res.json({
+          id: row.id,
+          title: row.title,
+          inviteCode: row.invite_code, // 轉回 camelCase
+          status: row.status
+        });
+      } finally {
+        client.release();
+      }
+    } catch (err) {
+      console.error("[ERROR] Lookup meeting failed:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // 取得單一會議（含 agenda）- Redis 優先
   router.get("/:id", async (req, res) => {
     const { id } = req.params;
