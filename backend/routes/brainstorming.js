@@ -223,17 +223,26 @@ module.exports = (pool, redis, io) => {
 
             const itemsQuery = await pool.query(
                 `
-                SELECT *
-                FROM brainstorming_items
-                WHERE meeting_id = $1
-                AND created_at >= $2
-                AND created_at <= $3
-                ORDER BY created_at ASC
+                SELECT bi.*, u.username
+                FROM brainstorming_items bi
+                LEFT JOIN users u ON bi.user_id = u.id
+                WHERE bi.meeting_id = $1
+                AND bi.created_at >= $2
+                AND bi.created_at <= $3
+                ORDER BY bi.created_at ASC
                 `,
                 // 參數：[會議 ID, 腦力激盪建立時間, 腦力激盪到期時間]
-                [meetingId, created_at, expires_at] 
+                [meetingId, created_at, expires_at]
             );
-            const ideas = itemsQuery.rows;
+            // rows now include a `username` field (may be null for anonymous items)
+            const ideas = itemsQuery.rows.map(row => ({
+                id: row.id,
+                meeting_id: row.meeting_id,
+                user_id: row.user_id,
+                username: row.username || null,
+                idea: row.idea,
+                created_at: row.created_at
+            }));
             console.log(`[GET /brainstormings/${meetingId}/complete] Ideas fetched:`, ideas);
 
             // ----------------------------------------------------

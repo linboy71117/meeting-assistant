@@ -58,7 +58,7 @@
           <div class="content-wrapper">
             <p class="idea-text">{{ idea.idea }}</p>
             <p class="idea-meta">
-              提出者：{{ idea.user_id || '匿名' }} | 
+              提出者：{{ idea.username || '匿名' }} | 
               時間：{{ formatTime(idea.created_at) }}
             </p>
           </div>

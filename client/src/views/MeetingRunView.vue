@@ -154,7 +154,7 @@ function parseDurationToSeconds(timeStr: string): number {
     const [mm, ss] = timeStr.split(':').map(Number);
     return (mm * 60) + (ss || 0);
   }
-  const val = parseInt(timeStr);
+  const val = parseFloat(timeStr);
   if (!isNaN(val)) return val * 60;
   return 300;
 }
