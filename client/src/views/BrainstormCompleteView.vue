@@ -54,11 +54,15 @@
       <ul v-if="ideas.length" class="idea-list">
         <li v-for="(idea, index) in ideas" :key="idea.id" class="idea-item">
           <div class="idea-number">#{{ index + 1 }}</div>
-          <p class="idea-text">{{ idea.idea }}</p>
-          <p class="idea-meta">
-            提出者：{{ idea.user_id || '匿名' }} | 
-            時間：{{ formatTime(idea.created_at) }}
-          </p>
+          
+          <div class="content-wrapper">
+            <p class="idea-text">{{ idea.idea }}</p>
+            <p class="idea-meta">
+              提出者：{{ idea.user_id || '匿名' }} | 
+              時間：{{ formatTime(idea.created_at) }}
+            </p>
+          </div>
+          
         </li>
       </ul>
 
@@ -306,7 +310,7 @@ onUnmounted(() => {
 }
 
 .idea-item {
-  display: flex;
+  display: flex; /* 保持 flex，讓 idea-number 和 content-wrapper 並排 */
   align-items: flex-start;
   padding: 15px;
   margin-bottom: 10px;
@@ -322,22 +326,36 @@ onUnmounted(() => {
   color: #007bff;
   margin-right: 15px;
   padding-top: 2px;
+  /* 確保編號不被壓縮 */
+  flex-shrink: 0; 
+}
+
+/* 新增 content-wrapper 樣式 */
+.content-wrapper {
+  /* 讓這個容器佔用 idea-item 內剩餘的所有空間 */
+  flex-grow: 1; 
+  /* 移除 idea-text 原本在 idea-item 中設定的 margin */
+  margin: 0; 
 }
 
 .idea-text {
-  flex-grow: 1;
-  font-size: 16px;
-  margin: 0;
+  /* 確保文字填滿空間 */
+  width: 100%; 
+  font-size: 12px;
+  /* 移除 idea-text 原本在 idea-item 中設定的 flex-grow: 1; */
+  margin: 0; 
   line-height: 1.5;
 }
 
 .idea-meta {
-  font-size: 12px;
+  font-size: 8px;
   color: #999;
-  margin-top: 5px;
-  margin-left: 20px;
-  flex-shrink: 0;
-  text-align: right;
+  /* 調整上邊距 */
+  margin-top: 5px; 
+  /* 移除左邊距和 flex 相關設定 */
+  margin-left: 0; 
+  /* 確保資訊靠右對齊 */
+  text-align: right; 
 }
 
 .actions {
