@@ -105,7 +105,7 @@
 
         <h2 class="title">{{ meeting.title }}</h2>
 
-        <p class="meta">日期：{{ meeting.date || "未設定" }}</p>
+        <p class="meta">日期：{{ formatDisplayDate(meeting.date) }}</p>
         <p class="meta">
           邀請碼：<span class="code-pill">{{ meeting.inviteCode }}</span>
         </p>
@@ -200,30 +200,24 @@ const editableAgenda = ref<any[]>([]);
 const isNewMeeting = ref(route.query.new === "1");
 
 // Helpers
-/**
- * 將本地日期轉換為不考慮時區偏移的 ISO 字符串
- * 例：本地時間 2025-12-10 14:00 → "2025-12-10T14:00:00Z"（保持本地時間值）
- */
-function toLocalISOString(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  const seconds = String(date.getSeconds()).padStart(2, '0');
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}Z`;
-}
-
-function normalizeDate(value: any): string {
-  if (!value) return "";
-  if (typeof value === "string") return value.slice(0, 10);
-  if (value instanceof Date) {
-    const year = value.getFullYear();
-    const month = String(value.getMonth() + 1).padStart(2, '0');
-    const day = String(value.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+function formatDisplayDate(dateStr: string | Date): string {
+  if (!dateStr) return "未設定";
+  const date = new Date(dateStr);
+  
+  // 使用 Intl.DateTimeFormat 強制轉換為台北時間
+  try {
+    return new Intl.DateTimeFormat("zh-TW", {
+      timeZone: "Asia/Taipei",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false, // 使用 24 小時制 (例如 14:30)，若要 上午/下午 請改 true
+    }).format(date);
+  } catch (e) {
+    return String(date); // 若瀏覽器不支援時區轉換的 fallback
   }
-  return "";
 }
 
 const agendaToShow = computed(() => meeting.value?.agenda ?? []);

@@ -76,7 +76,7 @@
 
         </div>
 
-        <div class="meta">📅 {{ m.date || '未設定日期' }}</div>
+        <div class="meta">📅 {{ formatDisplayDate(m.date) }}</div>
         <div class="meta">🔑 {{ m.inviteCode }}</div>
         <div v-if="m.inviteCode" class="meta">
           <a :href="`https://meet.google.com/${m.inviteCode}`" target="_blank" rel="noopener noreferrer" class="meet-link">
@@ -143,6 +143,27 @@ async function loadMeetings() {
     error.value = "無法載入會議列表";
   } finally {
     loading.value = false;
+  }
+}
+
+// Helpers
+function formatDisplayDate(dateStr: string | Date): string {
+  if (!dateStr) return "未設定";
+  const date = new Date(dateStr);
+  
+  // 使用 Intl.DateTimeFormat 強制轉換為台北時間
+  try {
+    return new Intl.DateTimeFormat("zh-TW", {
+      timeZone: "Asia/Taipei",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false, // 使用 24 小時制 (例如 14:30)，若要 上午/下午 請改 true
+    }).format(date);
+  } catch (e) {
+    return String(date); // 若瀏覽器不支援時區轉換的 fallback
   }
 }
 
