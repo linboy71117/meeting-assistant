@@ -41,10 +41,15 @@ const router = useRouter();
 
 const meetingId = route.params.id;
 
-const topic = ref("HCI 專案提案");
-const duration = ref(1);
+const topic = ref("");
+const duration = ref();
 
 async function createBrainstorm() {
+  if (!topic.value.trim() || !duration.value) {
+    alert("請輸入主題和持續時間");
+    return;
+  }
+
   const payload = {
     meetingId,
     topic: topic.value,

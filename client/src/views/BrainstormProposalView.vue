@@ -53,7 +53,7 @@ const API_BASE = import.meta.env.VITE_BACKEND_URL || "http://localhost:3000";
 const brainstorming = ref({});
 const ideas = ref([]);
 const countdown = ref(0);
-const newIdea = ref("AI 會議助理");
+const newIdea = ref("");
 
 let timer = null;
 let socket;
@@ -83,6 +83,15 @@ async function loadBrainstorming() {
   brainstorming.value = activeData; // { id, topic, expires_at }
   
   // 4. 開始倒數計時
+  // 初始化 countdown 為預計剩餘秒數，避免畫面略過第一秒
+  try {
+    const end = new Date(brainstorming.value.expires_at).getTime();
+    const remain = Math.max(0, Math.floor((end - Date.now()) / 1000));
+    countdown.value = remain;
+  } catch (e) {
+    countdown.value = 0;
+  }
+
   startCountdown(brainstorming.value.expires_at);
 }
 
