@@ -60,7 +60,7 @@ const startGoogleLogin = async () => {
   error.value = '';
   
   try {
-    const clientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || getGoogleClientID();
+    const clientId = await getGoogleClientID();
     const backendUrl = getAPIBase();
     const redirectUri = `${backendUrl}/api/users/auth/google/callback`;
     
